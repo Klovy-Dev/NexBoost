@@ -36,12 +36,46 @@ jobs:
         run: |
           Remove-Item -Recurse -Force "src-tauri/target/release/bundle" -ErrorAction SilentlyContinue
 
-      - name: Build Tauri app (avec signature)
+      - name: Préparer la clé de signature
         shell: pwsh
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          KEY_B64: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          # Trimmer le secret (évite les newlines trailing qui cassent le parsing)
+          $keyBase64 = $env:KEY_B64.Trim()
+          # Écrire la clé dans un fichier (pour le fallback)
+          $keyBytes = [Convert]::FromBase64String($keyBase64)
+          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\signing.key", $keyBytes)
+          # Exporter la clé base64 trimée et le mot de passe pour les étapes suivantes
+          "TAURI_SIGNING_PRIVATE_KEY=$keyBase64" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "SIGNING_KEY_FILE=$env:RUNNER_TEMP\signing.key" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "Clé prête ($(($keyBytes).Length) octets)"
+
+      - name: Build Tauri app
+        shell: pwsh
         run: npm run tauri build
+
+      - name: Signer le bundle NSIS (si non signé)
+        shell: pwsh
+        run: |
+          $nsisZip = Get-ChildItem -Recurse "src-tauri/target/release/bundle/nsis" -Filter "*.nsis.zip" |
+                       Where-Object { $_.Name -notlike "*.sig" } | Select-Object -First 1
+          if (-not $nsisZip) { throw "Fichier .nsis.zip introuvable !" }
+
+          $sigPath = "$($nsisZip.FullName).sig"
+          if (Test-Path $sigPath) {
+            Write-Host "Signature deja presente : $sigPath"
+          } else {
+            Write-Host "Signature manuelle de : $($nsisZip.FullName)"
+            # Utiliser -f (chemin fichier) : pas de souci avec l'arg vide du mot de passe
+            # TAURI_SIGNING_PRIVATE_KEY_PASSWORD="" est déjà dans l'env via GITHUB_ENV
+            npm run tauri -- signer sign -f $env:SIGNING_KEY_FILE $nsisZip.FullName
+            if ($LASTEXITCODE -ne 0) { throw "Echec de la signature (exit $LASTEXITCODE)" }
+          }
+
+          if (-not (Test-Path $sigPath)) { throw "Fichier .sig toujours absent !" }
+          Write-Host "Signature OK : $sigPath"
 
       - name: Créer la release et uploader latest.json
         shell: pwsh
@@ -51,11 +85,9 @@ jobs:
           $tag     = "${{ github.ref_name }}"
           $version = $tag -replace '^v', ''
 
-          # Lister tous les fichiers pour debug
           Write-Host "=== Contenu du dossier bundle ==="
           Get-ChildItem -Recurse "src-tauri/target/release/bundle/" | Select-Object -ExpandProperty FullName
 
-          # Trouver les fichiers
           $exe     = Get-ChildItem -Recurse "src-tauri/target/release/bundle/nsis" -Filter "*-setup.exe" |
                        Where-Object { $_.Name -notlike "*.sig" } | Select-Object -First 1
           $msi     = Get-ChildItem -Recurse "src-tauri/target/release/bundle/msi" -Filter "*.msi" |
@@ -65,21 +97,19 @@ jobs:
           $sigFile = Get-ChildItem -Recurse "src-tauri/target/release/bundle/nsis" -Filter "*.nsis.zip.sig" |
                        Select-Object -First 1
 
-          if (-not $sigFile)  { throw "Fichier *.nsis.zip.sig introuvable — la signature a echoue." }
+          if (-not $sigFile)  { throw "Fichier *.nsis.zip.sig introuvable !" }
           if (-not $nsisZip)  { throw "Fichier *.nsis.zip introuvable." }
 
           $signature = (Get-Content $sigFile.FullName -Raw).Trim()
           Write-Host "Signature OK : $($sigFile.Name)"
 
-          # Créer la release avec .exe, .msi et .nsis.zip
           gh release create $tag `
             --title "NexBoost $tag" `
-            --notes "NexBoost $tag — mise a jour automatique disponible." `
+            --notes "NexBoost $tag" `
             $exe.FullName `
             $msi.FullName `
             $nsisZip.FullName
 
-          # Construire et uploader latest.json
           $downloadUrl = "https://github.com/Klovy-Dev/nexboost/releases/download/$tag/$($nsisZip.Name)"
           $pubDate     = (Get-Date -AsUTC -Format "yyyy-MM-ddTHH:mm:ssZ")
 
