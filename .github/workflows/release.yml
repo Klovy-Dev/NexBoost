@@ -34,12 +34,14 @@ jobs:
         env:
           KEY_B64: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
-          $keyPath  = "$env:RUNNER_TEMP\nexboost.key"
-          $keyBytes = [Convert]::FromBase64String($env:KEY_B64.Trim())
-          [IO.File]::WriteAllBytes($keyPath, $keyBytes)
+          # Écrire la chaîne base64 directement dans le fichier
+          # tauri signer sign -f attend du base64 dans le fichier, pas le texte brut
+          $keyPath   = "$env:RUNNER_TEMP\nexboost.key"
+          $keyBase64 = $env:KEY_B64.Trim()
+          [IO.File]::WriteAllText($keyPath, $keyBase64)
           "SIGNING_KEY_PATH=$keyPath"              | Out-File -FilePath $env:GITHUB_ENV -Append
           "TAURI_SIGNING_PRIVATE_KEY_PASSWORD="    | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host "Cle : $keyPath ($($keyBytes.Length) octets)"
+          Write-Host "Cle : $keyPath"
 
       # Build normal — pas de signing pendant le build (c'est volontaire)
       - name: Build Tauri app
