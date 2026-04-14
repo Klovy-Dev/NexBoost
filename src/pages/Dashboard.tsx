@@ -60,6 +60,7 @@ export default function Dashboard({ user, onLogout, onPremiumActivated }: Props)
   const [relaunching,    setRelaunching]    = useState(false);
   const [updateVersion,  setUpdateVersion]  = useState<string | null>(null);
   const [installing,     setInstalling]     = useState(false);
+  const [updateError,    setUpdateError]    = useState<string | null>(null);
   const tempNotifSentAt = useRef<number>(0);
 
   // ── Vérification mise à jour (après 15s pour ne pas ralentir le démarrage) ──
@@ -78,15 +79,16 @@ export default function Dashboard({ user, onLogout, onPremiumActivated }: Props)
 
   const handleInstallUpdate = async () => {
     setInstalling(true);
+    setUpdateError(null);
     try {
       const update = await checkUpdate();
       if (update?.available) {
         await update.downloadAndInstall();
-        // exit(0) laisse le NSIS installer terminer et redémarrer l'app
-        // relaunch() relançait l'ancienne version avant que l'install soit finie
         await processExit(0);
       }
-    } catch {
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setUpdateError(msg);
       setInstalling(false);
     }
   };
@@ -371,32 +373,34 @@ export default function Dashboard({ user, onLogout, onPremiumActivated }: Props)
               ) : updateVersion ? (
                 /* ── Alerte mise à jour dans la titlebar ── */
                 <>
-                  <Download size={10} style={{ color: "#38bdf8", flexShrink: 0 }} />
-                  <span style={{ fontSize: 9, color: "#38bdf8", fontWeight: 500, whiteSpace: "nowrap" }}>
-                    v{updateVersion} dispo
+                  <Download size={10} style={{ color: updateError ? "#f87171" : "#38bdf8", flexShrink: 0 }} />
+                  <span style={{ fontSize: 9, color: updateError ? "#f87171" : "#38bdf8", fontWeight: 500, whiteSpace: "nowrap", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {updateError ? updateError : `v${updateVersion} dispo`}
                   </span>
+                  {!updateError && (
+                    <button
+                      onClick={handleInstallUpdate}
+                      disabled={installing}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 4,
+                        padding: "2px 8px", borderRadius: 4,
+                        fontSize: 9, fontWeight: 700,
+                        cursor: installing ? "not-allowed" : "pointer",
+                        background: "rgba(56,189,248,0.12)",
+                        border: "1px solid rgba(56,189,248,0.3)",
+                        color: "#38bdf8", transition: "all 0.15s", flexShrink: 0,
+                      }}
+                      onMouseEnter={e => { if (!installing) e.currentTarget.style.background = "rgba(56,189,248,0.22)"; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = "rgba(56,189,248,0.12)"; }}
+                    >
+                      {installing
+                        ? <div className="animate-spin" style={{ width: 7, height: 7, borderRadius: "50%", border: "2px solid rgba(56,189,248,0.2)", borderTopColor: "#38bdf8" }} />
+                        : <Download size={8} />}
+                      {installing ? "Installation..." : "Installer"}
+                    </button>
+                  )}
                   <button
-                    onClick={handleInstallUpdate}
-                    disabled={installing}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 4,
-                      padding: "2px 8px", borderRadius: 4,
-                      fontSize: 9, fontWeight: 700,
-                      cursor: installing ? "not-allowed" : "pointer",
-                      background: "rgba(56,189,248,0.12)",
-                      border: "1px solid rgba(56,189,248,0.3)",
-                      color: "#38bdf8", transition: "all 0.15s", flexShrink: 0,
-                    }}
-                    onMouseEnter={e => { if (!installing) e.currentTarget.style.background = "rgba(56,189,248,0.22)"; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = "rgba(56,189,248,0.12)"; }}
-                  >
-                    {installing
-                      ? <div className="animate-spin" style={{ width: 7, height: 7, borderRadius: "50%", border: "2px solid rgba(56,189,248,0.2)", borderTopColor: "#38bdf8" }} />
-                      : <Download size={8} />}
-                    {installing ? "Installation..." : "Installer"}
-                  </button>
-                  <button
-                    onClick={() => setUpdateVersion(null)}
+                    onClick={() => { setUpdateVersion(null); setUpdateError(null); }}
                     style={{ background: "none", border: "none", color: "#4b5563", cursor: "pointer", padding: 2, display: "flex", flexShrink: 0 }}
                   >
                     <X size={9} />
