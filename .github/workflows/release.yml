@@ -41,16 +41,25 @@ jobs:
         env:
           KEY_B64: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
-          # Trimmer le secret (évite les newlines trailing qui cassent le parsing)
+          # Décoder le secret base64 → texte minisign brut
           $keyBase64 = $env:KEY_B64.Trim()
-          # Écrire la clé dans un fichier (pour le fallback)
-          $keyBytes = [Convert]::FromBase64String($keyBase64)
+          $keyBytes  = [Convert]::FromBase64String($keyBase64)
+          $keyText   = [System.Text.Encoding]::UTF8.GetString($keyBytes)
+          Write-Host "Clé décodée ($($keyBytes.Length) octets) :"
+          Write-Host ($keyText -replace '(?m)^', '  ')
+
+          # Écrire la clé dans un fichier physique (pour la signature manuelle)
           [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\signing.key", $keyBytes)
-          # Exporter la clé base64 trimée et le mot de passe pour les étapes suivantes
-          "TAURI_SIGNING_PRIVATE_KEY=$keyBase64" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=" | Out-File -FilePath $env:GITHUB_ENV -Append
           "SIGNING_KEY_FILE=$env:RUNNER_TEMP\signing.key" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host "Clé prête ($(($keyBytes).Length) octets)"
+
+          # Passer le TEXTE brut à Tauri via la syntaxe multiline de GITHUB_ENV
+          "TAURI_SIGNING_PRIVATE_KEY<<TAURI_KEY_EOF" | Out-File -FilePath $env:GITHUB_ENV -Append
+          # Out-File ajoute un CRLF ; on veut exactement le contenu sans newline final
+          [IO.File]::AppendAllText($env:GITHUB_ENV, $keyText + "`n")
+          "TAURI_KEY_EOF" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+          "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "GITHUB_ENV mis à jour."
 
       - name: Build Tauri app
         shell: pwsh
