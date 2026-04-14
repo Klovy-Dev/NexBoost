@@ -50,4 +50,41 @@ jobs:
             Si tu as déjà NexBoost installé, la mise à jour sera proposée automatiquement dans l'application.
           releaseDraft: false
           prerelease: false
-          includeUpdaterJson: true
+          includeUpdaterJson: false
+
+      - name: Générer et uploader latest.json
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          $tag     = "${{ github.ref_name }}"
+
+          $nsisZip    = "src-tauri/target/release/bundle/nsis/NexBoost_${version}_x64-setup.nsis.zip"
+          $nsisZipSig = "src-tauri/target/release/bundle/nsis/NexBoost_${version}_x64-setup.nsis.zip.sig"
+
+          # Upload le .nsis.zip (nécessaire pour la mise à jour in-app)
+          gh release upload $tag $nsisZip --clobber
+
+          # Lire la signature
+          $signature  = (Get-Content $nsisZipSig -Raw).Trim()
+          $downloadUrl = "https://github.com/Klovy-Dev/nexboost/releases/download/$tag/NexBoost_${version}_x64-setup.nsis.zip"
+          $pubDate    = (Get-Date -AsUTC -Format "yyyy-MM-ddTHH:mm:ssZ")
+
+          # Construire latest.json
+          $payload = [ordered]@{
+            version  = $version
+            notes    = "NexBoost $tag"
+            pub_date = $pubDate
+            platforms = @{
+              "windows-x86_64" = @{
+                signature = $signature
+                url       = $downloadUrl
+              }
+            }
+          }
+          $payload | ConvertTo-Json -Depth 10 | Out-File "latest.json" -Encoding UTF8NoBOM
+
+          # Upload latest.json
+          gh release upload $tag "latest.json" --clobber
+          Write-Host "latest.json uploadé avec succès !"
