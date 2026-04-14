@@ -1,0 +1,518 @@
+╔══════════════════════════════════════════════════════════════════════════════════════╗
+║              OPTIPC — PROPOSITION DE REDESIGN COMPLET                               ║
+║              Document de réflexion design & architecture UI                          ║
+╚══════════════════════════════════════════════════════════════════════════════════════╝
+
+Rédigé par Claude · Projet : OptiPC · Stack : Tauri 2 + React + TypeScript
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  1. DIAGNOSTIC DE L'APPLICATION ACTUELLE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Points forts actuels :
+  ✓ Dark theme cohérent (#09090b background, palette zinc)
+  ✓ Logique fonctionnelle solide (tweaks, benchmark, nettoyage, overlay…)
+  ✓ Toutes les données système sont bien récupérées et affichées
+  ✓ Typographie correcte (Orbitron pour les labels, Inter, JetBrains Mono)
+
+Points faibles identifiés :
+  ✗ 10 onglets dans la sidebar → trop chargé, l'utilisateur est perdu
+  ✗ HomeTab et MonitorTab font doublon — deux pages de stats qui se ressemblent
+  ✗ Les graphiques (sparklines) sont minuscules : 56×16px, illisibles
+  ✗ Pas de vraie hiérarchie visuelle : tout se ressemble, rien ne ressort
+  ✗ Les jauges circulaires (RingProgress) sont petites et peu impactantes
+  ✗ Les tweaks sont listés sans catégorie, c'est une longue liste monotone
+  ✗ Le design "gaming" est timide : on peut aller bien plus loin côté style
+  ✗ Pas d'accent de couleur fort ni de hero visuel
+  ✗ Les stats temps-réel manquent de mise en valeur (petits chiffres)
+  ✗ L'overlay est trop basique pour être vraiment utile en gaming
+  ✗ Les pages Login/Register/Home ont un design complètement différent du Dashboard
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  2. NOUVELLE ARCHITECTURE DE NAVIGATION (6 SECTIONS)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ON PASSE DE 10 ONGLETS À 6 SECTIONS LOGIQUES :
+
+  AVANT (confus)          →   APRÈS (clair)
+  ─────────────────────────────────────────────────────────────────────
+  1. Accueil                  1. DASHBOARD  (Accueil + Monitoring fusionnés)
+  2. Monitoring               2. PERFORMANCE (Optimisations + Processus fusionnés)
+  3. Processus                3. RÉSEAU     (Réseau → garde sa page)
+  4. Réseau                   4. NETTOYAGE  (Nettoyage → garde sa page)
+  5. Optimisations            5. JEUX       (Jeux + Benchmark fusionnés)
+  6. Démarrage                6. SYSTÈME    (Démarrage + Paramètres fusionnés)
+  7. Nettoyage
+  8. Jeux
+  9. Benchmarks
+  10. Paramètres
+
+POURQUOI CE REGROUPEMENT ?
+  • Dashboard = une seule page qui dit TOUT sur l'état actuel du PC
+  • Performance = tout ce qui touche à l'optimisation (tweaks + processus)
+  • Réseau = une section dédiée, les gamers s'y intéressent beaucoup
+  • Nettoyage = action spécifique, garde son espace
+  • Jeux = bibliothèque + benchmark, deux trucs liés aux jeux
+  • Système = tout ce qui est "admin" (démarrage + paramètres)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  3. DIRECTION VISUELLE — "DARK PRECISION"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Concept : professionnel et gaming à la fois. Comme un HUD de cockpit de simulation.
+Référence visuelle : MSI Center, HWiNFO64 moderne, NZXT CAM, mais en BIEN plus beau.
+
+PALETTE DE COULEURS :
+  Background principal  : #080810  (quasi noir avec teinte bleue/violette)
+  Surface cards         : #0f0f1a  (légèrement plus clair)
+  Surface elevated      : #161625  (cards sur fond)
+  Borders               : #1e1e35  (bordure subtile)
+  Borders active        : #2d2d55  (bordure hover/focus)
+
+  Bleu accent (CPU)     : #3b82f6  → #60a5fa  (gradient)
+  Violet (RAM)          : #7c3aed  → #a78bfa  (gradient)
+  Orange/Rouge (Temp)   : #ea580c  → #fb923c  (gradient)
+  Jaune (Disque)        : #d97706  → #fbbf24  (gradient)
+  Vert (OK / Réseau)    : #16a34a  → #4ade80  (gradient)
+  Violet clair (GPU)    : #9333ea  → #c084fc  (gradient)
+
+  Texte principal       : #f0f0ff  (blanc légèrement bleuté)
+  Texte secondaire      : #8888aa  (gris-bleu)
+  Texte muté            : #44445a  (très discret)
+
+TYPOGRAPHIE :
+  Titre / Logo          : Orbitron Black, uppercase, letter-spacing 0.15em
+  Valeurs numériques    : JetBrains Mono, toujours tabular-nums
+  Labels / Corps        : Inter, pour tout le reste
+
+BORDURES & ARRONDI :
+  • Systématiquement border-radius: 0 sur les grandes cards (gaming flat)
+  • Petits éléments (badges, boutons) : border-radius: 2px max
+  • Jauges et cercles : border-radius: 9999px (ils sont ronds par définition)
+
+EFFETS SPÉCIAUX (utilisés avec parcimonie) :
+  • Une fine ligne colorée (2px) en haut des cards importantes = "accent bar"
+  • Box-shadow très léger sur les cards élevées (pas de glow excessif)
+  • Gradient de fond : très subtil radial gradient bleu-violet au centre de l'écran
+  • Séparateurs : dégradé de couleur → transparent (pas de ligne full-width)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  4. PAGE 1 — DASHBOARD (fusion Accueil + Monitoring)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+LAYOUT (3 colonnes adaptatives) :
+
+  ┌─────────────────────────────────────────────────────────────────┐
+  │  TOPBAR : "OPTIPC" | Score Global | Nom PC | Status LIVE       │
+  ├───────────────┬──────────────────────┬───────────────────────── ┤
+  │               │                      │                          │
+  │  JAUGE CPU    │   GRAPHIQUE CPU       │  INFOS SYSTÈME           │
+  │  (Ring 96px)  │   (chart area 200px)  │  OS / CPU brand         │
+  │   60.a5fa     │   30 dernières secs   │  Uptime / RAM total     │
+  │               │                      │  Hostname               │
+  ├───────────────┼──────────────────────┤                          │
+  │               │                      ├─────────────────────────┤
+  │  JAUGE RAM    │   GRAPHIQUE RAM       │  RECOMMANDATIONS        │
+  │  (Ring 96px)  │   (chart area 200px)  │  (3 conseils dynamiques)│
+  │   a78bfa      │                      │  basés sur les seuils   │
+  ├───────────────┼──────────────────────┤                          │
+  │               │                      ├─────────────────────────┤
+  │  JAUGE GPU    │   GRAPHIQUE GPU       │  BOUTON BOOST           │
+  │  (Ring 96px)  │   (chart area 200px)  │  (grand, bien visible)  │
+  │   c084fc      │                      │  avec progress si actif │
+  ├───────────────┼──────────────────────┤                          │
+  │               │                      ├─────────────────────────┤
+  │  JAUGE TEMP   │   GRAPHIQUE TEMP      │  PING + DISQUE          │
+  │  (Ring 96px)  │   (chart area 200px)  │  (petites stats)        │
+  │   fb923c      │                      │                          │
+  └───────────────┴──────────────────────┴─────────────────────────┘
+
+DÉTAIL DES JAUGES CIRCULAIRES :
+  • Taille 96px avec épaisseur de trait de 6px
+  • Valeur numérique en grand (24px, JetBrains Mono) au centre
+  • Label en dessous (10px, gris)
+  • Animation fluide sur changement de valeur
+  • Couleur change du vert → orange → rouge selon seuil
+
+DÉTAIL DES GRAPHIQUES (AREA CHARTS) :
+  • Hauteur 80px minimum (vs 16px actuellement)
+  • Area chart avec gradient de fill (couleur opaque en haut → transparent en bas)
+  • Ligne de trace (2px) + zone remplie
+  • Axe Y implicite (pas de labels, mais la grille est visible à 10% d'opacité)
+  • 30 points = 1 minute d'historique à 2s d'intervalle
+
+TOPBAR DU DASHBOARD :
+  • Logo OPTIPC (Orbitron) à gauche
+  • Score global de performance (grand chiffre coloré) au centre
+  • Indicateur LIVE animé (point vert pulsant)
+  • Nom du PC et OS à droite
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  5. PAGE 2 — PERFORMANCE (fusion Optimisations + Processus)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+LAYOUT : deux sections dans la même page avec scroll
+
+  SECTION HAUT → TWEAKS SYSTEME (redesignés)
+  ┌───────────────────────────────────────────────────────────────┐
+  │  Profils rapides : [ Jeu ] [ Travail ] [ Économie ] [ Reset ] │
+  │  N/8 tweaks actifs ████████░░  Score estimé: 78/100          │
+  ├───────────────────────────────────────────────────────────────┤
+  │  GROUPE : Performances                                        │
+  │  ├─ Plan haute perf.  [desc]  [toggle ON ]  Actif depuis 2h  │
+  │  └─ Priorité CPU      [desc]  [toggle OFF]                   │
+  │                                                               │
+  │  GROUPE : Gaming                                              │
+  │  ├─ Désact. Xbox Bar  [desc]  [toggle ON ]                   │
+  │  └─ Game Mode         [desc]  [toggle OFF]                   │
+  │                                                               │
+  │  GROUPE : Visuel & Services                                   │
+  │  ├─ Désact. animations[desc]  [toggle ON ]                   │
+  │  ├─ Désact. SysMain   [desc]  [toggle OFF]  ⚠ Admin requis  │
+  │  └─ Désact. WSearch   [desc]  [toggle OFF]  ⚠ Admin requis  │
+  │                                                               │
+  │  GROUPE : Réseau                                              │
+  │  └─ Optimiser TCP     [desc]  [toggle ON ]                   │
+  └───────────────────────────────────────────────────────────────┘
+
+  SECTION BAS → PROCESSUS (intégrée)
+  ┌───────────────────────────────────────────────────────────────┐
+  │  Processus actifs   [ 🔍 Rechercher... ]   142 processus     │
+  ├──────────┬──────────┬────────────────────┬────────────────── ┤
+  │  Process │  PID     │  CPU ▼             │  RAM             │
+  ├──────────┼──────────┼────────────────────┼────────────────── ┤
+  │  chrome  │  1234    │  ████░░  18.5%     │  412 MB         │
+  │  ...     │  ...     │  ...               │  ...            │
+  └──────────┴──────────┴────────────────────┴────────────────── ┘
+
+NOUVEAUTÉS TWEAKS :
+  • Groupes de tweaks (Performances / Gaming / Visuel & Services / Réseau)
+  • Badge "⚠ Admin requis" sur ceux qui nécessitent des droits élevés
+  • Affichage "Actif depuis Xh Xmin" quand un tweak est activé
+  • Barre de progression globale des tweaks actifs
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  6. PAGE 3 — RÉSEAU (redesignée)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+LAYOUT :
+  ┌───────────────────────────────────────────────────────────────┐
+  │  HERO PING : grand affichage centré                           │
+  │  ┌────────────────────────────────────────────────────┐      │
+  │  │   12 ms        ██████ GRAPHIQUE PING (100×50px)    │      │
+  │  │   Excellente   courbe temps réel sur 30 mesures    │      │
+  │  └────────────────────────────────────────────────────┘      │
+  ├───────────────────────────────────────────────────────────────┤
+  │  INTERFACES RÉSEAU (cartes par interface)                     │
+  │  ┌─────────────────────────┐  ┌─────────────────────────┐   │
+  │  │  Wi-Fi  ● Actif         │  │  Ethernet  ○ Inactif    │   │
+  │  │  ↓ Réception  320 KB/s  │  │  ↓ Réception    0 KB/s  │   │
+  │  │  ██████████░░  graph    │  │  ░░░░░░░░░░  graph       │   │
+  │  │  ↑ Envoi       48 KB/s  │  │  ↑ Envoi        0 KB/s  │   │
+  │  │  ████░░░░░░░░  graph    │  │  ░░░░░░░░░░  graph       │   │
+  │  │  Total reçu : 85 MB     │  │  Total reçu : 0 MB       │   │
+  │  └─────────────────────────┘  └─────────────────────────┘   │
+  └───────────────────────────────────────────────────────────────┘
+
+NOUVEAUTÉS RÉSEAU :
+  • Le ping a son propre bloc hero avec graphique de 30 mesures (vrai historique)
+  • Qualité de ping colorée : vert < 20ms / orange < 50ms / rouge > 50ms
+  • Graphiques débit séparés montée/descente par interface
+  • Indicateur actif/inactif bien visible
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  7. PAGE 4 — NETTOYAGE (redesignée)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+LAYOUT : pas de grand changement structurel, mais visuellement améliorée
+
+  • Barre de progression pendant le scan (pas juste un spinner)
+  • Chaque catégorie a une icône et une barre de taille relative
+  • Affichage "Espace total récupérable : X GB" en gros avant de nettoyer
+  • Animation de confirmation : "Nettoyage terminé — X MB libérés" bien mise en valeur
+  • Bouton principal "Nettoyer" plus grand et plus visible
+
+NOUVEAUTÉ :
+  • Taille des fichiers représentée visuellement (barre proportionnelle par catégorie)
+  • Icône spécifique par catégorie (navigateur, Windows, temp…)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  8. PAGE 5 — JEUX (fusion Jeux + Benchmark)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+LAYOUT : deux onglets internes (tabs dans la page)
+
+  [ Bibliothèque ]  [ Benchmark ]  ← onglets internes, pas dans la sidebar
+
+  ONGLET BIBLIOTHÈQUE :
+  ┌───────────────────────────────────────────────────────────────┐
+  │  X jeux détectés   Steam: Y   Epic: Z   Total: N GB          │
+  │  [ 🔍 Rechercher... ]                         [ Actualiser ] │
+  ├───────────────────────────────────────────────────────────────┤
+  │  ┌──────────────────┐  ┌──────────────────┐                  │
+  │  │  🎮 [NOM JEU]   │  │  🎮 [NOM JEU]   │                  │
+  │  │  STEAM           │  │  EPIC            │                  │
+  │  │  45.2 GB         │  │  12.1 GB         │                  │
+  │  │  C:\Steam\...    │  │  C:\Epic\...     │                  │
+  │  └──────────────────┘  └──────────────────┘                  │
+  └───────────────────────────────────────────────────────────────┘
+
+  ONGLET BENCHMARK :
+  ┌───────────────────────────────────────────────────────────────┐
+  │  Gros bouton LANCER LE BENCHMARK au centre                    │
+  │  Résultats en 4 jauges : CPU / RAM / Disk / Total             │
+  │  Chaque jauge = Ring 80px + valeur /100 + label               │
+  │  Historique des 5 derniers tests en dessous                   │
+  └───────────────────────────────────────────────────────────────┘
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  9. PAGE 6 — SYSTÈME (fusion Démarrage + Paramètres)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+LAYOUT : deux sous-sections avec scroll
+
+  SECTION HAUT → DÉMARRAGE
+  • Liste des programmes avec toggle activer/désactiver
+  • Badge HKCU / HKLM
+  • Icône spécifique
+
+  SECTION BAS → PARAMÈTRES
+  • Profil utilisateur (avatar, pseudo, email, plan)
+  • Seuils d'alerte (sliders)
+  • Overlay (bouton ouvrir)
+  • Clé Premium
+  • À propos
+  • Déconnexion
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  10. SIDEBAR — NOUVEAU DESIGN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ACTUEL : w-16 (64px), juste des icônes
+NOUVEAU : w-56 (224px) avec icône + label — sidebar expanded
+
+  ┌─────────────────────────────────┐
+  │  ██ OPTIPC  v1.0 Alpha          │  ← logo + version
+  ├─────────────────────────────────┤
+  │                                 │
+  │  ⬡  Dashboard       [●LIVE]    │  ← icône + label + badge
+  │  ⚡ Performance                 │
+  │  📶 Réseau                      │
+  │  🗑  Nettoyage                  │
+  │  🎮 Jeux                        │
+  │  ⚙  Système                    │
+  │                                 │
+  ├─────────────────────────────────┤
+  │  MINI STATS RAPIDES             │
+  │  CPU  ████░  45%                │  ← mini stats dans la sidebar
+  │  RAM  ██████  72%               │
+  │  TEMP  58°C  ●                  │
+  ├─────────────────────────────────┤
+  │  [Avatar] Pseudo                │  ← profil utilisateur
+  │  Plan: Premium / Gratuit        │
+  │  [ Se déconnecter ]             │
+  └─────────────────────────────────┘
+
+OPTIONS ALTERNATIVES POUR LA SIDEBAR :
+  Option A : Sidebar large fixe (comme décrit ci-dessus) — meilleure lisibilité
+  Option B : Sidebar étroite (64px) + tooltip au hover — économise de l'espace
+  Option C : Sidebar rétractable avec bouton toggle — compromis
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  11. GRAPHIQUES TEMPS RÉEL — REFONTE COMPLÈTE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PROBLÈME ACTUEL :
+  Les sparklines font 56×16px ou 60×28px. Impossible de lire une tendance.
+
+NOUVEAU COMPOSANT "AreaChart" :
+  • Dimensions : 100% de largeur × 80px de hauteur minimum
+  • SVG avec path fill (area gradient) + path stroke (ligne)
+  • Le fill : couleur à 20% d'opacité en haut → 0% en bas
+  • La ligne : 2px, couleur pleine
+  • Grille horizontale : 3 lignes à 33%, 66%, 100% (couleur 5% opacité)
+  • Pas d'axes ni de labels (propre et compact)
+  • Transition smooth : les points se décalent vers la gauche
+
+POUR CHAQUE MÉTRIQUE :
+
+  CPU (bleu #60a5fa) :
+    • Jauge Ring 96px + Valeur en gros + AreaChart 100%×80px
+    • Min/Max visible en hover
+    • Threads actifs en sous-label
+
+  RAM (violet #a78bfa) :
+    • Pareil + GB utilisé / GB total affiché
+    • Progression linéaire additionnelle
+
+  Température (orange #fb923c) :
+    • Couleur qui change automatiquement : vert si < 60°C, orange si < 80°C, rouge si ≥ 80°C
+    • Animation "pulse" si température critique
+
+  GPU (violet clair #c084fc) :
+    • Usage % + Température GPU séparés avec 2 graphs
+    • VRAM : barre de progression (X MB / Y MB)
+
+  Ping (vert/jaune/rouge selon valeur) :
+    • Historique des 30 dernières mesures (toutes les 5s = 2.5 min)
+    • Valeur min/max/moy sur la fenêtre
+    • Couleur dynamique
+
+  Disque :
+    • Pas de graphique temps réel (ça ne change pas assez vite)
+    • Simplement une barre de remplissage + Go utilisés / Go total
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  12. TWEAKS — REFONTE DÉTAIL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+GROUPES PROPOSÉS :
+
+  ▶ PERFORMANCES (2 tweaks)
+     • Plan haute performance   → active le plan d'alimentation "Haute performance"
+     • Priorité CPU premier plan → WinSAT + MMCSS foreground boost
+
+  ▶ GAMING (2 tweaks)
+     • Désactiver Xbox Game Bar → HKCU\...\GameDVR disabled
+     • Activer le Game Mode     → HKCU\...\GameMode enabled
+
+  ▶ VISUEL & SERVICES (3 tweaks)
+     • Désactiver les animations Windows → SystemParametersInfo
+     • Désactiver SysMain (Superfetch)  → service stop + disable  ⚠ Admin
+     • Désactiver Windows Search        → service stop + disable  ⚠ Admin
+
+  ▶ RÉSEAU (1 tweak)
+     • Optimiser TCP/IP         → netsh int tcp set global autotuninglevel=normal
+
+DESIGN DES ROWS DE TWEAKS :
+  • Icône à gauche avec couleur du groupe
+  • Nom du tweak (bold) + description courte (gris)
+  • Badge "⚠ Admin" si nécessaire (jaune)
+  • Toggle à droite
+  • Fond légèrement différent quand ON (plus clair)
+  • Séparateurs visuels entre groupes (pas de border, juste espace + label groupe)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  13. OVERLAY GAMING — REFONTE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ACTUEL : 4 lignes de stats basiques dans une petite fenêtre
+
+NOUVEAU DESIGN :
+  ┌─────────────────────────────┐
+  │ ≡ OPTIPC              [×]  │  ← header drag zone
+  ├─────────────────────────────┤
+  │  CPU  ██████░  62%  59°C   │  ← barre + valeur + temp CPU sur même ligne
+  │  RAM  ████░░░  71%  11.4G  │
+  │  GPU  ████████  89%  74°C  │  ← GPU usage + GPU temp
+  │  NET  ↑2.1 ↓18 MB/s  8ms  │  ← envoi / réception / ping
+  ├─────────────────────────────┤
+  │  ● LIVE  FPS: —            │  ← futur : FPS counter intégré
+  └─────────────────────────────┘
+
+  Taille : 180×130px (légèrement plus grand)
+  Transparence de fond : 92% (quasi opaque mais peut voir derrière si nécessaire)
+  Accent bar couleur sur chaque ligne selon niveau (vert/orange/rouge)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  14. PAGES LOGIN / REGISTER / HOME — COHÉRENCE VISUELLE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PROBLÈME : ces pages ont un look "gaming neon" très différent du Dashboard.
+
+PROPOSITION :
+  • Adopter la même palette "Dark Precision" que le Dashboard
+  • Fond : même #080810 avec radial gradient très subtil
+  • Formulaire centré, card en #0f0f1a avec bordure #1e1e35
+  • Logo OPTIPC en Orbitron en haut du formulaire
+  • Input fields avec focus ring bleu (#3b82f6)
+  • Bouton primary en bleu plein (pas neon)
+  • Supprimer les effets glass/glow trop chargés
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  15. MICRO-ANIMATIONS ET TRANSITIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  • Changement d'onglet : fadeIn 200ms (déjà en place, à garder)
+  • Cards : hover transition background 150ms (déjà en place)
+  • Valeurs numériques : transition smooth via CSS (pas de saut brutal)
+  • Toggle : transition left 200ms (déjà en place)
+  • Badges de statut (OK/WARN/CRIT) : fadeIn lors du changement
+  • Toasts : slide in from right + auto-dismiss (déjà en place)
+  • Barre de progression : transition width 700ms ease (déjà en place)
+  • Graphiques : scroll left sur chaque nouveau point (smooth)
+  • Score Ring : stroke-dashoffset animé sur changement de valeur
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  16. COMPOSANTS À CRÉER / REFAIRE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Nouveau :
+  • AreaChart.tsx  — graphique SVG area fill (remplace Sparkline pour les gros)
+  • StatCard.tsx   — card unifiée (Ring + AreaChart + infos) réutilisable
+  • NavItem.tsx    — item de sidebar avec label (pas juste icône)
+
+  À modifier :
+  • Sparkline.tsx  — garder pour l'overlay et les petits espaces
+  • RingProgress.tsx — augmenter les tailles disponibles (96px, 80px, 64px)
+  • Toggle.tsx     — ajouter une variante "slim" pour l'overlay
+  • TitleBar.tsx   — cohérence avec le nouveau design
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  17. RÉSUMÉ — CE QUE JE TE PROPOSE DE FAIRE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ÉTAPE 1 : Nouvelle palette + index.css (fond, couleurs, composants)
+ÉTAPE 2 : Sidebar redesignée (large, avec labels, mini stats)
+ÉTAPE 3 : Nouveau composant AreaChart (remplace sparklines)
+ÉTAPE 4 : Dashboard fusionné (Home + Monitor) avec grands graphiques
+ÉTAPE 5 : Performance fusionné (Tweaks groupés + Processus)
+ÉTAPE 6 : Réseau (ping hero + graphiques débit)
+ÉTAPE 7 : Jeux (tabs internes bibliothèque + benchmark)
+ÉTAPE 8 : Système (démarrage + paramètres dans une page)
+ÉTAPE 9 : Nettoyage (amélioré visuellement)
+ÉTAPE 10 : Overlay (refonte avec débit réseau + ping)
+ÉTAPE 11 : Login / Register / Home (cohérence visuelle)
+
+DURÉE ESTIMÉE : chaque étape = 1 session de travail
+RISQUE : très faible — on ne touche pas au backend Rust, seulement React/CSS
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  18. QUESTIONS POUR TOI
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  1. Tu veux une SIDEBAR LARGE (avec labels) ou ÉTROITE (icônes seulement) ?
+
+  2. Pour les couleurs : tu gardes la palette "Dark Precision" proposée (bleu-violet-orange)
+     ou tu veux autre chose ? (ex: tout bleu, ou full gaming neon, ou monochrome…)
+
+  3. Tu veux les graphiques AREA CHART (plus grands) ou les sparklines actuelles te suffisent ?
+
+  4. Tu es OK pour fusionner les 10 onglets en 6 sections ?
+
+  5. Pour l'overlay : tu veux garder la version simple actuelle ou on la refonts ?
+
+  6. Tu veux refaire aussi les pages Login / Register / Home ou on les laisse ?
+
+  7. Y a-t-il une feature manquante que tu voudrais ajouter en profitant du redesign ?
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Dis-moi ce que tu veux garder, changer, ou enlever — et on commence !
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

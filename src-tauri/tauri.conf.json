@@ -1,0 +1,45 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "NexBoost",
+  "version": "0.1.0",
+  "identifier": "com.klovy.nexboost",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "NexBoost",
+        "width": 1189,
+        "height": 828,
+        "resizable": false,
+        "decorations": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDRFNzVFOTNENUY1MUQwRDUKUldUVjBGRmZQZWwxVGpMZ0VWL3J3K1lMNSs4YVdaK2NheFBOcFd6dmtEZWdvQTdwckhQOTEzUlgK",
+      "endpoints": [
+        "https://github.com/Klovy-Dev/nexboost/releases/latest/download/latest.json"
+      ]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}
