@@ -36,19 +36,11 @@ jobs:
         run: |
           Remove-Item -Recurse -Force "src-tauri/target/release/bundle" -ErrorAction SilentlyContinue
 
-      - name: Écrire la clé de signature dans un fichier
+      - name: Build Tauri app (avec signature)
         shell: pwsh
         env:
-          KEY_B64: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-        run: |
-          $keyBytes = [Convert]::FromBase64String($env:KEY_B64.Trim())
-          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\signing.key", $keyBytes)
-          "TAURI_SIGNING_PRIVATE_KEY=$env:RUNNER_TEMP\signing.key" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host "Clé écrite dans : $env:RUNNER_TEMP\signing.key"
-
-      - name: Build Tauri app
-        shell: pwsh
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npm run tauri build
 
       - name: Créer la release et uploader latest.json
@@ -73,7 +65,7 @@ jobs:
           $sigFile = Get-ChildItem -Recurse "src-tauri/target/release/bundle/nsis" -Filter "*.nsis.zip.sig" |
                        Select-Object -First 1
 
-          if (-not $sigFile)  { throw "Fichier *.nsis.zip.sig introuvable — la signature a échoué." }
+          if (-not $sigFile)  { throw "Fichier *.nsis.zip.sig introuvable — la signature a echoue." }
           if (-not $nsisZip)  { throw "Fichier *.nsis.zip introuvable." }
 
           $signature = (Get-Content $sigFile.FullName -Raw).Trim()
@@ -82,7 +74,7 @@ jobs:
           # Créer la release avec .exe, .msi et .nsis.zip
           gh release create $tag `
             --title "NexBoost $tag" `
-            --notes "## NexBoost $tag`n`n### Installation`nTélécharge le fichier .exe ci-dessous et lance l'installation.`n`n### Mise à jour automatique`nSi tu as déjà NexBoost installé, la mise à jour sera proposée automatiquement dans l'application." `
+            --notes "NexBoost $tag — mise a jour automatique disponible." `
             $exe.FullName `
             $msi.FullName `
             $nsisZip.FullName
@@ -107,4 +99,4 @@ jobs:
           Get-Content "latest.json"
 
           gh release upload $tag "latest.json" --clobber
-          Write-Host "latest.json uploadé !"
+          Write-Host "latest.json uploade !"
