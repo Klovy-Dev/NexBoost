@@ -53,7 +53,7 @@ jobs:
 
           $newExeName = "NexBoost-$version-setup.exe"
           $newExePath = Join-Path $nsisDir $newExeName
-          Rename-Item $exe.FullName $newExePath
+          Rename-Item $exe.FullName -NewName $newExeName
           Write-Host "EXE -> $newExeName"
 
           # -- ZIP + SIG : tauri build signe automatiquement si la clé est présente --
@@ -67,8 +67,8 @@ jobs:
             $existingZip = Get-ChildItem $nsisDir -Filter "*.nsis.zip" |
                              Where-Object { $_.Name -notlike "*.sig" } | Select-Object -First 1
 
-            Rename-Item $existingZip.FullName $newZipPath
-            Rename-Item $existingSig.FullName (Join-Path $nsisDir "$newZipName.sig")
+            Rename-Item $existingZip.FullName -NewName $newZipName
+            Rename-Item $existingSig.FullName -NewName "$newZipName.sig"
           } else {
             Write-Host "Signature manuelle..."
             Compress-Archive -Path $newExePath -DestinationPath $newZipPath -Force
