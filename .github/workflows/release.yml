@@ -45,34 +45,13 @@ jobs:
           [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\signing.key", $keyBytes)
           "TAURI_SIGNING_PRIVATE_KEY=$env:RUNNER_TEMP\signing.key" | Out-File -FilePath $env:GITHUB_ENV -Append
           "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host "Clé de signature écrite dans : $env:RUNNER_TEMP\signing.key"
+          Write-Host "Clé écrite dans : $env:RUNNER_TEMP\signing.key"
 
       - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'NexBoost ${{ github.ref_name }}'
-          releaseBody: |
-            ## NexBoost ${{ github.ref_name }}
-
-            ### Installation
-            Télécharge le fichier `.exe` ci-dessous et lance l'installation.
-
-            ### Mise à jour automatique
-            Si tu as déjà NexBoost installé, la mise à jour sera proposée automatiquement dans l'application.
-          releaseDraft: false
-          prerelease: false
-          includeUpdaterJson: false
-
-      - name: Lister les fichiers bundle
         shell: pwsh
-        run: |
-          Write-Host "=== Contenu du dossier bundle ==="
-          Get-ChildItem -Recurse "src-tauri/target/release/bundle/" | Select-Object -ExpandProperty FullName
+        run: npm run tauri build
 
-      - name: Générer et uploader latest.json
+      - name: Créer la release et uploader latest.json
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -80,33 +59,47 @@ jobs:
           $tag     = "${{ github.ref_name }}"
           $version = $tag -replace '^v', ''
 
-          # Chercher les fichiers signés
-          $nsisZipSig = Get-ChildItem -Recurse "src-tauri/target/release/bundle/" -Filter "*.nsis.zip.sig" | Select-Object -First 1
-          $nsisZip    = Get-ChildItem -Recurse "src-tauri/target/release/bundle/" -Filter "*.nsis.zip" |
-                          Where-Object { $_.Name -notlike "*.sig" } | Select-Object -First 1
+          # Lister tous les fichiers pour debug
+          Write-Host "=== Contenu du dossier bundle ==="
+          Get-ChildItem -Recurse "src-tauri/target/release/bundle/" | Select-Object -ExpandProperty FullName
 
-          if ($nsisZipSig) {
-            Write-Host "Fichier signé trouvé : $($nsisZip.FullName)"
-            $signature  = (Get-Content $nsisZipSig.FullName -Raw).Trim()
-            $uploadFile = $nsisZip.FullName
-            $assetName  = $nsisZip.Name
-          } else {
-            # Fallback : signer manuellement le .exe avec tauri signer
-            Write-Host "Pas de .nsis.zip.sig — signature manuelle du .exe"
-            $exeFile = Get-ChildItem -Recurse "src-tauri/target/release/bundle/" -Filter "*-setup.exe" |
-                         Where-Object { $_.Name -notlike "*.sig" } | Select-Object -First 1
-            Write-Host "Signature de : $($exeFile.FullName)"
-            npx tauri signer sign -k "$env:RUNNER_TEMP\signing.key" --password "" "$($exeFile.FullName)"
-            $sigFile    = "$($exeFile.FullName).sig"
-            $signature  = (Get-Content $sigFile -Raw).Trim()
-            $uploadFile = $exeFile.FullName
-            $assetName  = $exeFile.Name
-          }
+          # Trouver les fichiers
+          $exe     = Get-ChildItem -Recurse "src-tauri/target/release/bundle/nsis" -Filter "*-setup.exe" |
+                       Where-Object { $_.Name -notlike "*.sig" } | Select-Object -First 1
+          $msi     = Get-ChildItem -Recurse "src-tauri/target/release/bundle/msi" -Filter "*.msi" |
+                       Where-Object { $_.Name -notlike "*.sig" -and $_.Name -notlike "*.zip" } | Select-Object -First 1
+          $nsisZip = Get-ChildItem -Recurse "src-tauri/target/release/bundle/nsis" -Filter "*.nsis.zip" |
+                       Where-Object { $_.Name -notlike "*.sig" } | Select-Object -First 1
+          $sigFile = Get-ChildItem -Recurse "src-tauri/target/release/bundle/nsis" -Filter "*.nsis.zip.sig" |
+                       Select-Object -First 1
 
-          # Upload le fichier de mise à jour
-          gh release upload $tag $uploadFile --clobber
+          if (-not $sigFile)  { throw "Fichier *.nsis.zip.sig introuvable — la signature a échoué." }
+          if (-not $nsisZip)  { throw "Fichier *.nsis.zip introuvable." }
 
-          $downloadUrl = "https://github.com/Klovy-Dev/nexboost/releases/download/$tag/$assetName"
+          $signature = (Get-Content $sigFile.FullName -Raw).Trim()
+          Write-Host "Signature OK : $($sigFile.Name)"
+
+          # Écrire les notes dans un fichier temporaire
+          @"
+## NexBoost $tag
+
+### Installation
+Télécharge le fichier .exe ci-dessous et lance l'installation.
+
+### Mise à jour automatique
+Si tu as déjà NexBoost installé, la mise à jour sera proposée automatiquement dans l'application.
+"@ | Out-File "release-notes.md" -Encoding UTF8NoBOM
+
+          # Créer la release avec .exe, .msi et .nsis.zip
+          gh release create $tag `
+            --title "NexBoost $tag" `
+            --notes-file release-notes.md `
+            $exe.FullName `
+            $msi.FullName `
+            $nsisZip.FullName
+
+          # Construire et uploader latest.json
+          $downloadUrl = "https://github.com/Klovy-Dev/nexboost/releases/download/$tag/$($nsisZip.Name)"
           $pubDate     = (Get-Date -AsUTC -Format "yyyy-MM-ddTHH:mm:ssZ")
 
           $payload = [ordered]@{
