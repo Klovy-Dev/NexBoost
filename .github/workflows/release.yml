@@ -79,21 +79,10 @@ jobs:
           $signature = (Get-Content $sigFile.FullName -Raw).Trim()
           Write-Host "Signature OK : $($sigFile.Name)"
 
-          # Écrire les notes dans un fichier temporaire
-          @"
-## NexBoost $tag
-
-### Installation
-Télécharge le fichier .exe ci-dessous et lance l'installation.
-
-### Mise à jour automatique
-Si tu as déjà NexBoost installé, la mise à jour sera proposée automatiquement dans l'application.
-"@ | Out-File "release-notes.md" -Encoding UTF8NoBOM
-
           # Créer la release avec .exe, .msi et .nsis.zip
           gh release create $tag `
             --title "NexBoost $tag" `
-            --notes-file release-notes.md `
+            --notes "## NexBoost $tag`n`n### Installation`nTélécharge le fichier .exe ci-dessous et lance l'installation.`n`n### Mise à jour automatique`nSi tu as déjà NexBoost installé, la mise à jour sera proposée automatiquement dans l'application." `
             $exe.FullName `
             $msi.FullName `
             $nsisZip.FullName
