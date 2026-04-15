@@ -1,16 +1,57 @@
 import { useState, useEffect } from "react";
-import { RefreshCw, Trash2, AlertTriangle, CheckCircle, SquareCheck, Square } from "lucide-react";
+import { RefreshCw, Trash2, AlertTriangle, CheckCircle, SquareCheck, Square, MemoryStick, Globe, Recycle } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import type { CleanCategory, CleanResult } from "../types";
 
+type QuickAction = "ram" | "recycle" | "dns";
+type QuickState  = { loading: boolean; result: string | null };
+type RamCleanResult = { before_mb: number; after_mb: number; freed_mb: number };
+
 export default function CleanupTab() {
-  const [categories,  setCategories]  = useState<CleanCategory[]>([]);
-  const [selected,    setSelected]    = useState<Set<string>>(new Set());
-  const [scanning,    setScanning]    = useState(false);
-  const [cleaning,    setCleaning]    = useState(false);
-  const [cleanResult, setCleanResult] = useState<CleanResult | null>(null);
+  const [categories,   setCategories]   = useState<CleanCategory[]>([]);
+  const [selected,     setSelected]     = useState<Set<string>>(new Set());
+  const [scanning,     setScanning]     = useState(false);
+  const [cleaning,     setCleaning]     = useState(false);
+  const [cleanResult,  setCleanResult]  = useState<CleanResult | null>(null);
+  const [ramResult,    setRamResult]    = useState<RamCleanResult | null>(null);
+  const [quick, setQuick] = useState<Record<QuickAction, QuickState>>({
+    ram:     { loading: false, result: null },
+    recycle: { loading: false, result: null },
+    dns:     { loading: false, result: null },
+  });
 
   useEffect(() => { scan(); }, []);
+
+  const fmt = (mb: number) =>
+    mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(1)} MB`;
+
+  const runQuick = async (action: QuickAction) => {
+    setQuick(q => ({ ...q, [action]: { loading: true, result: null } }));
+    if (action === "ram") setRamResult(null);
+    try {
+      if (action === "ram") {
+        const res = await invoke<RamCleanResult>("clean_ram");
+        setRamResult(res);
+        const msg = res.freed_mb > 0 ? `−${fmt(res.freed_mb)}` : "Nettoyée";
+        setQuick(q => ({ ...q, ram: { loading: false, result: msg } }));
+        setTimeout(() => {
+          setRamResult(null);
+          setQuick(q => ({ ...q, ram: { ...q.ram, result: null } }));
+        }, 3000);
+        return;
+      } else if (action === "recycle") {
+        const res = await invoke<CleanResult>("empty_recycle_bin");
+        const msg = res.freed_mb > 0 ? `${fmt(res.freed_mb)} libérés` : "Corbeille vidée";
+        setQuick(q => ({ ...q, recycle: { loading: false, result: msg } }));
+      } else {
+        await invoke<string>("flush_dns");
+        setQuick(q => ({ ...q, dns: { loading: false, result: "DNS vidé" } }));
+      }
+    } catch {
+      setQuick(q => ({ ...q, [action]: { loading: false, result: "Erreur" } }));
+    }
+    setTimeout(() => setQuick(q => ({ ...q, [action]: { ...q[action], result: null } })), 4000);
+  };
 
   const scan = async () => {
     setScanning(true); setCleanResult(null);
@@ -35,9 +76,6 @@ export default function CleanupTab() {
       setCleanResult({ freed_mb: 0, files_deleted: 0, files_skipped: 0 });
     } finally { setCleaning(false); }
   };
-
-  const fmt = (mb: number) =>
-    mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(1)} MB`;
 
   const totalMb    = categories.filter(c => selected.has(c.id)).reduce((s, c) => s + c.size_mb, 0);
   const totalFiles = categories.filter(c => selected.has(c.id)).reduce((s, c) => s + c.file_count, 0);
@@ -86,6 +124,104 @@ export default function CleanupTab() {
           </span>
         </div>
       </div>
+
+      {/* ── Actions rapides ── */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, flexShrink: 0 }}>
+        {([
+          { key: "ram"     as QuickAction, icon: <MemoryStick size={14} />, label: "Nettoyer RAM",    color: "#818cf8" },
+          { key: "recycle" as QuickAction, icon: <Recycle     size={14} />, label: "Vider Corbeille", color: "#4ade80" },
+          { key: "dns"     as QuickAction, icon: <Globe       size={14} />, label: "Flush DNS",       color: "#38bdf8" },
+        ]).map(({ key, icon, label, color }) => {
+          const state = quick[key];
+          return (
+            <button
+              key={key}
+              onClick={() => runQuick(key)}
+              disabled={state.loading}
+              style={{
+                padding: "12px 10px", borderRadius: 9, fontSize: 12, fontWeight: 600,
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+                background: state.result ? `${color}14` : "rgba(255,255,255,0.04)",
+                border: `1px solid ${state.result ? `${color}40` : "rgba(255,255,255,0.08)"}`,
+                color: state.result ? color : "#94a3b8",
+                cursor: state.loading ? "not-allowed" : "pointer",
+                opacity: state.loading ? 0.7 : 1,
+                transition: "all 0.2s",
+              }}
+              onMouseEnter={e => { if (!state.loading) { e.currentTarget.style.background = `${color}10`; e.currentTarget.style.borderColor = `${color}30`; e.currentTarget.style.color = color; }}}
+              onMouseLeave={e => { if (!state.result) { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; e.currentTarget.style.color = "#94a3b8"; }}}
+            >
+              {state.loading
+                ? <div className="animate-spin" style={{ width: 12, height: 12, borderRadius: "50%", border: `2px solid ${color}30`, borderTopColor: color }} />
+                : icon}
+              <span>{state.result ?? label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── Résultat nettoyage RAM ── */}
+      {ramResult && (
+        <div style={{
+          background: "#0c0c1a", border: "1px solid rgba(129,140,248,0.2)",
+          borderRadius: 10, padding: "14px 18px", flexShrink: 0,
+        }} className="animate-fadeIn">
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+              <MemoryStick size={13} style={{ color: "#818cf8" }} />
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#818cf8", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                RAM nettoyée
+              </span>
+            </div>
+            {ramResult.freed_mb > 0 ? (
+              <span style={{
+                fontSize: 12, fontWeight: 800, fontFamily: "monospace", color: "#4ade80",
+                background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.2)",
+                padding: "2px 10px", borderRadius: 6,
+              }}>
+                −{fmt(ramResult.freed_mb)} libérés
+              </span>
+            ) : (
+              <span style={{ fontSize: 11, color: "#4b5563" }}>Aucun changement détecté</span>
+            )}
+          </div>
+
+          {/* Barre avant/après */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {/* Avant */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 10, color: "#4b5563", width: 36, flexShrink: 0 }}>Avant</span>
+              <div style={{ flex: 1, height: 8, borderRadius: 4, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
+                <div style={{
+                  height: "100%", borderRadius: 4,
+                  width: `${Math.min(100, (ramResult.before_mb / (ramResult.before_mb * 1.1)) * 100)}%`,
+                  background: "rgba(239,68,68,0.6)",
+                  transition: "width 0.6s ease",
+                }} />
+              </div>
+              <span style={{ fontSize: 11, fontFamily: "monospace", color: "#ef4444", width: 68, textAlign: "right", flexShrink: 0 }}>
+                {fmt(ramResult.before_mb)}
+              </span>
+            </div>
+            {/* Après */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 10, color: "#4b5563", width: 36, flexShrink: 0 }}>Après</span>
+              <div style={{ flex: 1, height: 8, borderRadius: 4, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
+                <div style={{
+                  height: "100%", borderRadius: 4,
+                  width: `${Math.min(100, (ramResult.after_mb / (ramResult.before_mb * 1.1)) * 100)}%`,
+                  background: "#818cf8",
+                  transition: "width 0.6s ease",
+                }} />
+              </div>
+              <span style={{ fontSize: 11, fontFamily: "monospace", color: "#818cf8", width: 68, textAlign: "right", flexShrink: 0 }}>
+                {fmt(ramResult.after_mb)}
+              </span>
+            </div>
+          </div>
+
+        </div>
+      )}
 
       {/* ── 3 mini stats ── */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, flexShrink: 0 }}>
@@ -249,9 +385,18 @@ export default function CleanupTab() {
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
-                      <span style={{ fontSize: 13, fontWeight: 500, color: sel ? "#f1f5f9" : "#94a3b8" }}>
-                        {cat.label}
-                      </span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontSize: 13, fontWeight: 500, color: sel ? "#f1f5f9" : "#94a3b8" }}>
+                          {cat.label}
+                        </span>
+                        {cat.requires_admin && (
+                          <span style={{
+                            fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 4,
+                            background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.25)",
+                            color: "#fbbf24",
+                          }}>Admin</span>
+                        )}
+                      </div>
                       <span style={{ fontSize: 11, fontWeight: 700, fontFamily: "monospace", color: sel ? "#f97316" : "#4b5563" }}>
                         {cat.size_mb > 0 ? fmt(cat.size_mb) : "0 MB"}
                       </span>

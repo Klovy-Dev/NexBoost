@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import nexboostLogo from "../assets/nexboost-logo.svg";
-import { AlertTriangle, CheckCircle, Crown, LogOut, Minus, X, Zap, Settings, Wifi, Trash2, Gamepad2, LayoutDashboard, ShieldAlert, ShieldCheck, Download } from "lucide-react";
+import { AlertTriangle, CheckCircle, Crown, LogOut, Minus, X, Zap, Settings, Wifi, Trash2, Gamepad2, LayoutDashboard, ShieldAlert, ShieldCheck, Download, ListFilter } from "lucide-react";
 import { check as checkUpdate } from "@tauri-apps/plugin-updater";
 import { exit as processExit } from "@tauri-apps/plugin-process";
 import { invoke } from "@tauri-apps/api/core";
@@ -14,6 +14,7 @@ import { notify } from "../lib/notify";
 import DashboardTab   from "../tabs/DashboardTab";
 import PerformanceTab from "../tabs/PerformanceTab";
 import NetworkTab     from "../tabs/NetworkTab";
+import ProcessTab     from "../tabs/ProcessTab";
 import CleanupTab     from "../tabs/CleanupTab";
 import GamesTab       from "../tabs/GamesTab";
 import SystemTab      from "../tabs/SystemTab";
@@ -34,6 +35,7 @@ const NAV_ITEMS: { id: Tab; icon: React.ReactNode; label: string }[] = [
   { id: "dashboard",   icon: <LayoutDashboard size={16} />, label: "Dashboard"     },
   { id: "performance", icon: <Zap size={16} />,             label: "Optimisations" },
   { id: "network",     icon: <Wifi size={16} />,            label: "Réseau"        },
+  { id: "processes",   icon: <ListFilter size={16} />,      label: "Processus"     },
   { id: "cleanup",     icon: <Trash2 size={16} />,          label: "Nettoyage"     },
   { id: "games",       icon: <Gamepad2 size={16} />,        label: "Jeux"          },
   { id: "system",      icon: <Settings size={16} />,        label: "Système"       },
@@ -180,7 +182,7 @@ export default function Dashboard({ user, onLogout, onPlanActivated }: Props) {
 
   /* Raccourcis clavier 1-6 */
   useEffect(() => {
-    const TABS: Tab[] = ["dashboard", "performance", "network", "cleanup", "games", "system"];
+    const TABS: Tab[] = ["dashboard", "performance", "network", "processes", "cleanup", "games", "system"];
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       const idx = parseInt(e.key) - 1;
@@ -548,8 +550,9 @@ export default function Dashboard({ user, onLogout, onPlanActivated }: Props) {
                 setTweakStates={setTweakStates}
               />
             )}
-            {activeTab === "network"  && <NetworkTab ping={ping} pingHistory={pingHistory} />}
-            {activeTab === "cleanup"  && <CleanupTab />}
+            {activeTab === "network"    && <NetworkTab ping={ping} pingHistory={pingHistory} />}
+            {activeTab === "processes" && <ProcessTab />}
+            {activeTab === "cleanup"   && <CleanupTab />}
             {activeTab === "games"    && <GamesTab userId={user.id} />}
             {activeTab === "system"   && (
               <SystemTab

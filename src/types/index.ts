@@ -16,10 +16,10 @@ export interface TweakResult   { success: boolean; message: string; }
 export interface TweakStatus   { id: string; active: boolean; }
 export interface GpuStats      { name: string; usage: number; temp: number; vram_used_mb: number; vram_total_mb: number; }
 export interface StartupProgram { name: string; command: string; location: string; enabled: boolean; }
-export interface CleanCategory  { id: string; label: string; size_mb: number; file_count: number; }
+export interface CleanCategory  { id: string; label: string; size_mb: number; file_count: number; requires_admin: boolean; }
 export interface InstalledGame  { name: string; platform: string; install_path: string; size_gb: number; }
 
-export type Tab = "dashboard" | "performance" | "network" | "cleanup" | "games" | "system";
+export type Tab = "dashboard" | "performance" | "network" | "processes" | "cleanup" | "games" | "system";
 
 export type History = { cpu: number[]; ram: number[]; temp: number[]; disk: number[] };
 export type Peaks   = { cpu: number; ram: number; temp: number };
