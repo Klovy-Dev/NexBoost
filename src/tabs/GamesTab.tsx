@@ -68,7 +68,7 @@ export default function GamesTab({ userId }: Props) {
       runAutoBoost();
       intervalRef.current  = setInterval(runAutoBoost, BOOST_INTERVAL * 1000);
       setNextBoostIn(BOOST_INTERVAL);
-      countdownRef.current = setInterval(() => setNextBoostIn(n => Math.max(0, n - 1)), 1000);
+      countdownRef.current = setInterval(() => setNextBoostIn(n => Math.max(0, n - 2)), 2000);
     }
     return () => {
       if (intervalRef.current)  clearInterval(intervalRef.current);

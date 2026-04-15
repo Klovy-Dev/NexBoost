@@ -14,12 +14,14 @@ export default function NetworkTab({ ping, pingHistory }: Props) {
   const [netStats, setNetStats] = useState<NetworkStats[]>([]);
 
   useEffect(() => {
-    const fetch = () =>
+    const fetch = () => {
+      if (document.hidden) return;
       invoke<NetworkStats[]>("get_network_stats")
         .then(setNetStats)
         .catch(() => setNetStats([]));
+    };
     fetch();
-    const iv = setInterval(fetch, 2000);
+    const iv = setInterval(fetch, 4000);
     return () => clearInterval(iv);
   }, []);
 

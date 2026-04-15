@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { SystemStats, SystemInfo, History, Peaks } from "../types";
 import { INIT_STATS, EMPTY_HISTORY, HISTORY_SIZE } from "../types";
@@ -10,24 +10,75 @@ export function useSystemStats() {
   const [ping,        setPing]        = useState(0);
   const [pingHistory, setPingHistory] = useState<number[]>(Array(HISTORY_SIZE).fill(0));
   const [peaks,       setPeaks]       = useState<Peaks>({ cpu: 0, ram: 0, temp: 0 });
-  const pingRef                       = useRef(0);
+  const pingRef     = useRef(0);
+  const statsIvRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pingIvRef   = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Ping toutes les 5s
-  useEffect(() => {
-    const fetchPing = async () => {
-      try {
-        const ms = await invoke<number>("measure_ping");
-        if (ms > 0) {
-          pingRef.current = ms;
-          setPing(ms);
-          setPingHistory(h => [...h.slice(1), ms]);
-        }
-      } catch {}
-    };
-    fetchPing();
-    const iv = setInterval(fetchPing, 5000);
-    return () => clearInterval(iv);
+  const fetchStats = useCallback(async () => {
+    if (document.hidden) return; // pas de polling si fenêtre minimisée / cachée
+    try {
+      const d = await invoke<SystemStats>("get_system_stats");
+      setStats(d);
+      setHistory(p => ({
+        cpu:  [...p.cpu.slice(1),  d.cpu],
+        ram:  [...p.ram.slice(1),  d.ram],
+        temp: [...p.temp.slice(1), d.temp],
+        disk: [...p.disk.slice(1), d.disk],
+      }));
+      setPeaks(p => ({
+        cpu:  Math.max(p.cpu,  d.cpu),
+        ram:  Math.max(p.ram,  d.ram),
+        temp: Math.max(p.temp, d.temp),
+      }));
+    } catch {
+      // Données de démo si pas de backend
+      const s: SystemStats = {
+        cpu: Math.floor(15 + Math.random() * 40),
+        ram: Math.floor(45 + Math.random() * 30),
+        ram_used_gb: 8.2, ram_total_gb: 16,
+        temp: Math.floor(38 + Math.random() * 20),
+        disk: Math.floor(60 + Math.random() * 15),
+        disk_used_gb: 234, disk_total_gb: 512, cpu_cores: 8,
+      };
+      setStats(s);
+      setHistory(p => ({
+        cpu:  [...p.cpu.slice(1),  s.cpu],
+        ram:  [...p.ram.slice(1),  s.ram],
+        temp: [...p.temp.slice(1), s.temp],
+        disk: [...p.disk.slice(1), s.disk],
+      }));
+      setPeaks(p => ({
+        cpu:  Math.max(p.cpu,  s.cpu),
+        ram:  Math.max(p.ram,  s.ram),
+        temp: Math.max(p.temp, s.temp),
+      }));
+    }
   }, []);
+
+  const fetchPing = useCallback(async () => {
+    if (document.hidden) return;
+    try {
+      const ms = await invoke<number>("measure_ping");
+      if (ms > 0) {
+        pingRef.current = ms;
+        setPing(ms);
+        setPingHistory(h => [...h.slice(1), ms]);
+      }
+    } catch {}
+  }, []);
+
+  // Pause/reprise automatique selon visibilité de la fenêtre
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (!document.hidden) {
+        // Fenêtre redevient visible → refresh immédiat
+        fetchStats();
+        fetchPing();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [fetchStats, fetchPing]);
 
   // Infos système une seule fois
   useEffect(() => {
@@ -39,51 +90,19 @@ export function useSystemStats() {
       }));
   }, []);
 
-  // Stats toutes les 2s
+  // Stats toutes les 3s (au lieu de 2s)
   useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const d = await invoke<SystemStats>("get_system_stats");
-        setStats(d);
-        setHistory(p => ({
-          cpu:  [...p.cpu.slice(1),  d.cpu],
-          ram:  [...p.ram.slice(1),  d.ram],
-          temp: [...p.temp.slice(1), d.temp],
-          disk: [...p.disk.slice(1), d.disk],
-        }));
-        setPeaks(p => ({
-          cpu:  Math.max(p.cpu,  d.cpu),
-          ram:  Math.max(p.ram,  d.ram),
-          temp: Math.max(p.temp, d.temp),
-        }));
-      } catch {
-        // Données de démo si pas de backend
-        const s: SystemStats = {
-          cpu: Math.floor(15 + Math.random() * 40),
-          ram: Math.floor(45 + Math.random() * 30),
-          ram_used_gb: 8.2, ram_total_gb: 16,
-          temp: Math.floor(38 + Math.random() * 20),
-          disk: Math.floor(60 + Math.random() * 15),
-          disk_used_gb: 234, disk_total_gb: 512, cpu_cores: 8,
-        };
-        setStats(s);
-        setHistory(p => ({
-          cpu:  [...p.cpu.slice(1),  s.cpu],
-          ram:  [...p.ram.slice(1),  s.ram],
-          temp: [...p.temp.slice(1), s.temp],
-          disk: [...p.disk.slice(1), s.disk],
-        }));
-        setPeaks(p => ({
-          cpu:  Math.max(p.cpu,  s.cpu),
-          ram:  Math.max(p.ram,  s.ram),
-          temp: Math.max(p.temp, s.temp),
-        }));
-      }
-    };
     fetchStats();
-    const iv = setInterval(fetchStats, 2000);
-    return () => clearInterval(iv);
-  }, []);
+    statsIvRef.current = setInterval(fetchStats, 3000);
+    return () => { if (statsIvRef.current) clearInterval(statsIvRef.current); };
+  }, [fetchStats]);
+
+  // Ping toutes les 10s (au lieu de 5s)
+  useEffect(() => {
+    fetchPing();
+    pingIvRef.current = setInterval(fetchPing, 10000);
+    return () => { if (pingIvRef.current) clearInterval(pingIvRef.current); };
+  }, [fetchPing]);
 
   return { stats, history, info, ping, pingHistory, peaks };
 }

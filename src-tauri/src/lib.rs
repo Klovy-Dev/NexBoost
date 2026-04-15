@@ -1345,7 +1345,7 @@ pub fn run() {
                 {
                     let mut s = sys_bg.lock().unwrap();
                     s.refresh_cpu_usage();
-                    if tick % 4 == 0 {
+                    if tick % 8 == 0 {
                         s.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
                     }
                 }
@@ -1358,8 +1358,8 @@ pub fn run() {
                     s.refresh_memory();
                     *cache_bg.lock().unwrap() = compute_sys_stats(&s);
 
-                    // Mise à jour processus toutes les ~2s (tick pair)
-                    if tick % 4 == 0 {
+                    // Mise à jour processus toutes les ~4s (tick % 8)
+                    if tick % 8 == 0 {
                         s.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
                         let mut procs: Vec<ProcessInfo> = s
                             .processes()
@@ -1382,7 +1382,7 @@ pub fn run() {
         });
     }
 
-    // Thread background : interroge le GPU toutes les 2s
+    // Thread background : interroge le GPU toutes les 5s (nvidia-smi = spawn process, coûteux)
     let gpu_arc = Arc::new(Mutex::new(GpuStats {
         name: "GPU".to_string(),
         usage: 0, temp: 0, vram_used_mb: 0, vram_total_mb: 0,
@@ -1390,7 +1390,7 @@ pub fn run() {
     let gpu_clone = Arc::clone(&gpu_arc);
     std::thread::spawn(move || loop {
         *gpu_clone.lock().unwrap() = fetch_gpu_inner();
-        std::thread::sleep(std::time::Duration::from_secs(2));
+        std::thread::sleep(std::time::Duration::from_secs(5));
     });
 
     tauri::Builder::default()

@@ -168,15 +168,16 @@ export default function Dashboard({ user, onLogout, onPlanActivated }: Props) {
     }
   }, [ramAlert, thresholds.ram]);
 
-  /* GPU polling */
+  /* GPU polling — 5s, pause si fenêtre cachée */
   useEffect(() => {
     const fetch = () => {
+      if (document.hidden) return;
       invoke<GpuStats>("get_gpu_stats").then(g => {
         setGpuHistory(h => [...h.slice(-29), g.usage]);
       }).catch(() => {});
     };
     fetch();
-    const iv = setInterval(fetch, 3000);
+    const iv = setInterval(fetch, 5000);
     return () => clearInterval(iv);
   }, []);
 

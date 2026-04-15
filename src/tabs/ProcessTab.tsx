@@ -16,6 +16,7 @@ export default function ProcessTab() {
   const intervalRef  = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchProcesses = async (silent = false) => {
+    if (document.hidden) return;
     if (!silent) setLoading(true);
     try {
       const list = await invoke<ProcessInfo[]>("get_processes");
@@ -26,7 +27,7 @@ export default function ProcessTab() {
 
   useEffect(() => {
     fetchProcesses();
-    intervalRef.current = setInterval(() => fetchProcesses(true), 3000);
+    intervalRef.current = setInterval(() => fetchProcesses(true), 4000);
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, []);
 
