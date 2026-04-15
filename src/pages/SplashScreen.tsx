@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { getVersion } from "@tauri-apps/api/app";
 import nexboostLogo from "../assets/nexboost-logo.svg";
 
 interface Props { onDone: () => void; }
@@ -37,6 +38,9 @@ export default function SplashScreen({ onDone }: Props) {
   const [stepIndex, setStepIndex] = useState(0);
   const [fadeOut,   setFadeOut]   = useState(false);
   const [scanY,     setScanY]     = useState(0);
+  const [version,   setVersion]   = useState("…");
+
+  useEffect(() => { getVersion().then(setVersion).catch(() => setVersion("?")); }, []);
 
   useEffect(() => {
     // Progression
@@ -201,7 +205,7 @@ export default function SplashScreen({ onDone }: Props) {
           fontSize: 9, fontFamily: "'Orbitron', monospace",
           letterSpacing: "0.2em", color: "rgba(255,255,255,0.12)",
         }}>
-          v1.0.0 — ALPHA
+          v{version}
         </span>
         <div style={{ height: 1, width: 16, background: "rgba(255,255,255,0.07)" }} />
       </div>

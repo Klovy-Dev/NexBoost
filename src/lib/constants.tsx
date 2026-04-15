@@ -54,6 +54,12 @@ export const TWEAKS: Tweak[] = [
     icon: <Timer size={14} />,
   },
   {
+    id: "ultimate_performance", group: "fps", color: "#f59e0b", requiresAdmin: true,
+    label: "Plan Performances Ultimes",
+    desc:  "Active le plan d'alimentation caché Windows avec toutes les limites levées",
+    icon: <Power size={14} />,
+  },
+  {
     id: "gamebar", group: "fps", color: "#f59e0b",
     label: "Désactiver Xbox Game Bar",
     desc:  "Supprime l'overlay Xbox qui consomme du GPU et de la RAM inutilement",
@@ -216,6 +222,7 @@ export const TAB_TITLES: Record<Tab, string> = {
   dashboard:   "Dashboard",
   performance: "Performance",
   network:     "Réseau",
+  processes:   "Processus",
   cleanup:     "Nettoyage",
   games:       "Jeux & Benchmark",
   system:      "Système",
@@ -239,6 +246,6 @@ export const APP_FEATURES: {
   { icon: <Trash2 size={15} />,    title: "Nettoyage",     desc: "Libérez de l'espace",    color: "#ef4444",        tab: "cleanup"     },
   { icon: <Gamepad2 size={15} />,  title: "Jeux",          desc: "Steam, Epic, Benchmark", color: STAT_COLORS.gpu,  tab: "games"       },
   { icon: <Power size={15} />,     title: "Système",       desc: "Démarrage & réglages",   color: STAT_COLORS.disk, tab: "system"      },
-  { icon: <Layers size={15} />,    title: "Processus",     desc: "Gérez les processus",    color: STAT_COLORS.ram,  tab: "performance" },
+  { icon: <Layers size={15} />,    title: "Processus",     desc: "Gérez les processus",    color: STAT_COLORS.ram,  tab: "processes"   },
   { icon: <Shield size={15} />,    title: "Services",      desc: "Désactiver l'inutile",   color: "#0891b2",        tab: "performance" },
 ];

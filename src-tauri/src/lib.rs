@@ -7,6 +7,8 @@ use sysinfo::{Components, Disks, Networks, System};
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 #[cfg(windows)]
+use std::os::windows::fs::OpenOptionsExt;
+#[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 // ─── Structures ───────────────────────────────────────────────
@@ -65,6 +67,13 @@ pub struct CleanResult {
 }
 
 #[derive(Serialize, Clone)]
+pub struct RamCleanResult {
+    pub before_mb: f32,
+    pub after_mb:  f32,
+    pub freed_mb:  f32,
+}
+
+#[derive(Serialize, Clone)]
 pub struct BenchmarkResult {
     pub cpu_score: u32,
     pub ram_score: u32,
@@ -74,10 +83,11 @@ pub struct BenchmarkResult {
 }
 
 struct SysState {
-    sys:       Arc<Mutex<System>>,
-    networks:  Mutex<(Networks, Instant)>,
-    gpu:       Arc<Mutex<GpuStats>>,
-    sys_cache: Arc<Mutex<SystemStats>>,
+    sys:        Arc<Mutex<System>>,
+    networks:   Mutex<(Networks, Instant)>,
+    gpu:        Arc<Mutex<GpuStats>>,
+    sys_cache:  Arc<Mutex<SystemStats>>,
+    proc_cache: Arc<Mutex<Vec<ProcessInfo>>>,
 }
 
 // ─── Commandes Tauri ──────────────────────────────────────────
@@ -107,26 +117,10 @@ fn get_system_info(state: tauri::State<SysState>) -> SystemInfo {
     SystemInfo { os_name: os_full, hostname, cpu_brand, cpu_cores, uptime_secs }
 }
 
-/// Liste des processus triés par CPU décroissant
+/// Liste des processus — lit le cache mis à jour toutes les 2s par le thread background
 #[tauri::command]
 fn get_processes(state: tauri::State<SysState>) -> Vec<ProcessInfo> {
-    let mut sys = state.sys.lock().unwrap();
-    sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
-
-    let mut processes: Vec<ProcessInfo> = sys
-        .processes()
-        .values()
-        .map(|p| ProcessInfo {
-            pid:       p.pid().as_u32(),
-            name:      p.name().to_string_lossy().into_owned(),
-            cpu:       p.cpu_usage(),
-            memory_mb: p.memory() as f32 / 1_048_576.0,
-        })
-        .collect();
-
-    processes.sort_by(|a, b| b.cpu.partial_cmp(&a.cpu).unwrap_or(std::cmp::Ordering::Equal));
-    processes.truncate(50);
-    processes
+    state.proc_cache.lock().unwrap().clone()
 }
 
 /// Statistiques réseau par interface avec débit calculé en Rust
@@ -458,6 +452,8 @@ fn apply_tweak(id: String) -> TweakResult {
         // ── Services Windows ──
         "xbox_services"    => run_ps("@('XblGameSave','XboxNetApiSvc','XboxGipSvc','XblAuthManager') | ForEach-Object { try{Stop-Service $_ -Force -EA SilentlyContinue}catch{}; try{Set-Service $_ -StartupType Disabled -EA SilentlyContinue}catch{} }"),
         "diagtrack"        => run_ps("try{Stop-Service DiagTrack -Force -EA SilentlyContinue}catch{}; try{Set-Service DiagTrack -StartupType Disabled -EA SilentlyContinue}catch{}; $p='HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection'; if(!(Test-Path $p)){New-Item $p -Force|Out-Null}; Set-ItemProperty $p AllowTelemetry 0 -Type DWord -Force"),
+        // ── Alimentation ──
+        "ultimate_performance" => run_ps("$guid='e9a42b02-d5df-448d-aa00-03f14749eb61'; $list=(powercfg /list 2>&1|Out-String); if($list -match $guid){ powercfg /setactive $guid }else{ $out=(powercfg /duplicatescheme $guid 2>&1|Out-String); if($out -match '([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})'){ powercfg /setactive $matches[1] } }; (powercfg /getactivescheme) -match $guid"),
         _ => false,
     };
     TweakResult {
@@ -504,6 +500,8 @@ fn revert_tweak(id: String) -> TweakResult {
         // ── Services Windows ──
         "xbox_services"    => run_ps("@('XblGameSave','XboxNetApiSvc','XboxGipSvc','XblAuthManager') | ForEach-Object { try{Set-Service $_ -StartupType Manual -EA SilentlyContinue}catch{} }"),
         "diagtrack"        => run_ps("try{Set-Service DiagTrack -StartupType Automatic -EA SilentlyContinue; Start-Service DiagTrack -EA SilentlyContinue}catch{}"),
+        // ── Alimentation ──
+        "ultimate_performance" => run_ps("powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c"),
         _ => false,
     };
     TweakResult {
@@ -552,6 +550,9 @@ $r.keyboard_buffer=try{(Get-ItemPropertyValue 'HKLM:\SYSTEM\CurrentControlSet\Se
 # ── Services ──
 $r.xbox_services=(Get-Service XblGameSave -EA SilentlyContinue).StartType -eq 'Disabled'
 $r.diagtrack=(Get-Service DiagTrack -EA SilentlyContinue).StartType -eq 'Disabled'
+# ── Alimentation ──
+$guid='e9a42b02-d5df-448d-aa00-03f14749eb61'
+$r.ultimate_performance=$false;try{$active=(powercfg /getactivescheme 2>&1|Out-String);$list=(powercfg /list 2>&1|Out-String);$r.ultimate_performance=($list -match $guid)-and($active -match $guid)}catch{}
 $r|ConvertTo-Json -Compress
 "#;
 
@@ -736,10 +737,30 @@ fn toggle_startup_program(name: String, location: String, enable: bool) -> bool 
 
 #[derive(Serialize, Clone)]
 pub struct CleanCategory {
-    pub id:         String,
-    pub label:      String,
-    pub size_mb:    f32,
-    pub file_count: u32,
+    pub id:             String,
+    pub label:          String,
+    pub size_mb:        f32,
+    pub file_count:     u32,
+    pub requires_admin: bool,
+}
+
+/// Chemin du dossier Temp de l'utilisateur courant, fiable même sous élévation UAC.
+/// `%TEMP%` peut pointer vers le profil système après `Start-Process -Verb RunAs`,
+/// donc on préfère `%LOCALAPPDATA%\Temp` qui reste dans le profil utilisateur réel.
+fn user_temp() -> String {
+    if let Ok(local) = std::env::var("LOCALAPPDATA") {
+        let p = format!("{local}\\Temp");
+        if std::path::Path::new(&p).exists() {
+            return p;
+        }
+    }
+    if let Ok(profile) = std::env::var("USERPROFILE") {
+        let p = format!("{profile}\\AppData\\Local\\Temp");
+        if std::path::Path::new(&p).exists() {
+            return p;
+        }
+    }
+    std::env::var("TEMP").unwrap_or_default()
 }
 
 fn dir_info(path: &str) -> (f32, u32) {
@@ -759,9 +780,46 @@ fn dir_info(path: &str) -> (f32, u32) {
     (b as f32 / 1_048_576.0, c)
 }
 
+/// Vérifie si un fichier peut réellement être supprimé (non verrouillé exclusivement).
+/// Ouvre avec l'accès DELETE + partage complet — échoue si un process tient le fichier
+/// sans FILE_SHARE_DELETE.
+#[cfg(windows)]
+fn is_deletable(path: &std::path::Path) -> bool {
+    std::fs::OpenOptions::new()
+        .access_mode(0x00010000) // DELETE
+        .share_mode(0x00000007)  // FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE
+        .open(path)
+        .is_ok()
+}
+
+/// Comme dir_info mais ne compte que les fichiers qu'on peut effectivement supprimer.
+fn dir_info_deletable(path: &str) -> (f32, u32) {
+    fn walk(p: &std::path::Path) -> (u64, u32) {
+        let mut b = 0u64; let mut c = 0u32;
+        if let Ok(entries) = std::fs::read_dir(p) {
+            for e in entries.flatten() {
+                if let Ok(m) = e.metadata() {
+                    if m.is_file() {
+                        #[cfg(windows)]
+                        { if is_deletable(&e.path()) { b += m.len(); c += 1; } }
+                        #[cfg(not(windows))]
+                        { b += m.len(); c += 1; }
+                    } else if m.is_dir() {
+                        let (db, dc) = walk(&e.path());
+                        b += db; c += dc;
+                    }
+                }
+            }
+        }
+        (b, c)
+    }
+    let (b, c) = walk(std::path::Path::new(path));
+    (b as f32 / 1_048_576.0, c)
+}
+
 #[tauri::command]
 fn get_clean_categories() -> Vec<CleanCategory> {
-    let tmp     = std::env::var("TEMP").unwrap_or_default();
+    let tmp     = user_temp();
     let local   = std::env::var("LOCALAPPDATA").unwrap_or_default();
     let appdata = std::env::var("APPDATA").unwrap_or_default();
 
@@ -780,33 +838,61 @@ fn get_clean_categories() -> Vec<CleanCategory> {
         (b as f32 / 1_048_576.0, c)
     };
 
+    macro_rules! cat {
+        ($id:expr, $label:expr, $path:expr, $admin:expr) => {{
+            let (s, n) = dir_info($path);
+            CleanCategory { id: $id.into(), label: $label.into(), size_mb: s, file_count: n, requires_admin: $admin }
+        }};
+    }
+
     let mut cats = vec![
-        { let (s, n) = dir_info(&tmp);
-          CleanCategory { id: "temp_user".into(), label: "Temp utilisateur".into(), size_mb: s, file_count: n } },
-        { let (s, n) = dir_info(r"C:\Windows\Temp");
-          CleanCategory { id: "temp_windows".into(), label: "Temp Windows".into(), size_mb: s, file_count: n } },
-        { let (s, n) = dir_info(r"C:\Windows\Prefetch");
-          CleanCategory { id: "prefetch".into(), label: "Cache Prefetch".into(), size_mb: s, file_count: n } },
-        { let (s, n) = dir_info(r"C:\Windows\SoftwareDistribution\Download");
-          CleanCategory { id: "windows_update".into(), label: "Windows Update cache".into(), size_mb: s, file_count: n } },
-        { let p = format!("{local}\\Google\\Chrome\\User Data\\Default\\Cache");
-          let (s, n) = dir_info(&p);
-          CleanCategory { id: "chrome".into(), label: "Cache Chrome".into(), size_mb: s, file_count: n } },
-        { let p = format!("{local}\\Microsoft\\Edge\\User Data\\Default\\Cache");
-          let (s, n) = dir_info(&p);
-          CleanCategory { id: "edge".into(), label: "Cache Edge".into(), size_mb: s, file_count: n } },
-        { let p = format!("{appdata}\\Mozilla\\Firefox\\Profiles");
-          let (s, n) = dir_info(&p);
-          CleanCategory { id: "firefox".into(), label: "Cache Firefox".into(), size_mb: s, file_count: n } },
-        CleanCategory { id: "thumbnails".into(), label: "Vignettes Windows".into(), size_mb: thumb_mb, file_count: thumb_count },
+        {
+            // dir_info_deletable : ne compte que les fichiers réellement supprimables
+            // (non verrouillés par un autre process) — évite d'afficher des MB fantômes
+            let (s, n) = dir_info_deletable(&tmp);
+            CleanCategory { id: "temp_user".into(), label: "Temp utilisateur".into(), size_mb: s, file_count: n, requires_admin: false }
+        },
+        cat!("temp_windows",   "Temp Windows",           r"C:\Windows\Temp",                                            true),
+        cat!("prefetch",       "Cache Prefetch",         r"C:\Windows\Prefetch",                                        true),
+        cat!("windows_update", "Windows Update cache",   r"C:\Windows\SoftwareDistribution\Download",                   true),
+        cat!("chrome",         "Cache Chrome",           &format!("{local}\\Google\\Chrome\\User Data\\Default\\Cache"), false),
+        cat!("edge",           "Cache Edge",             &format!("{local}\\Microsoft\\Edge\\User Data\\Default\\Cache"), false),
+        cat!("firefox",        "Cache Firefox",          &format!("{appdata}\\Mozilla\\Firefox\\Profiles"),              false),
+        CleanCategory { id: "thumbnails".into(), label: "Vignettes Windows".into(), size_mb: thumb_mb, file_count: thumb_count, requires_admin: false },
     ];
 
     // Cache Brave
     let brave_p = format!("{local}\\BraveSoftware\\Brave-Browser\\User Data\\Default\\Cache");
     let (bs, bn) = dir_info(&brave_p);
     if bn > 0 {
-        cats.push(CleanCategory { id: "brave".into(), label: "Cache Brave".into(), size_mb: bs, file_count: bn });
+        cats.push(CleanCategory { id: "brave".into(), label: "Cache Brave".into(), size_mb: bs, file_count: bn, requires_admin: false });
     }
+
+    // Cache DirectX Shader
+    let dx_p = format!("{local}\\D3DSCache");
+    let (dxs, dxn) = dir_info(&dx_p);
+    cats.push(CleanCategory { id: "dx_cache".into(), label: "Cache Shader DirectX".into(), size_mb: dxs, file_count: dxn, requires_admin: false });
+
+    // Cache NVIDIA
+    let (ns1, nn1) = dir_info(&format!("{local}\\NVIDIA\\DXCache"));
+    let (ns2, nn2) = dir_info(&format!("{local}\\NVIDIA\\GLCache"));
+    if ns1 + ns2 > 0.0 || nn1 + nn2 > 0 {
+        cats.push(CleanCategory { id: "nvidia_cache".into(), label: "Cache GPU NVIDIA".into(), size_mb: ns1 + ns2, file_count: nn1 + nn2, requires_admin: false });
+    }
+
+    // Cache AMD
+    let (ams, amn) = dir_info(&format!("{local}\\AMD\\DxCache"));
+    if ams > 0.0 || amn > 0 {
+        cats.push(CleanCategory { id: "amd_cache".into(), label: "Cache GPU AMD".into(), size_mb: ams, file_count: amn, requires_admin: false });
+    }
+
+    // Rapports d'erreurs Windows (WER)
+    let (wers, wern) = dir_info(&format!("{local}\\Microsoft\\Windows\\WER\\ReportArchive"));
+    cats.push(CleanCategory { id: "wer".into(), label: "Rapports d'erreurs Windows".into(), size_mb: wers, file_count: wern, requires_admin: false });
+
+    // Fichiers récents
+    let (recs, recn) = dir_info(&format!("{appdata}\\Microsoft\\Windows\\Recent"));
+    cats.push(CleanCategory { id: "recent".into(), label: "Fichiers récents".into(), size_mb: recs, file_count: recn, requires_admin: false });
 
     cats
 }
@@ -848,7 +934,17 @@ fn clean_categories(categories: Vec<String>) -> CleanResult {
 
     for cat in &categories {
         match cat.as_str() {
-            "temp_user"      => clean_rec!(&std::env::var("TEMP").unwrap_or_default()),
+            "temp_user" => {
+                // Script one-liner : mesure avant, supprime, mesure après
+                // Parse en f64 car PowerShell retourne des doubles (ex: "1234567.0")
+                let t = user_temp().replace('\'', "''");
+                let script = format!(
+                    "$b=(gci '{t}\\*' -r -fo -ea 0|measure -p Length -s).Sum;if(-not $b){{$b=0}};gci '{t}\\*' -fo -ea 0|ri -r -fo -ea 0;$a=(gci '{t}\\*' -r -fo -ea 0|measure -p Length -s).Sum;if(-not $a){{$a=0}};[Math]::Max(0,$b-$a)"
+                );
+                let freed_b = ps_out(&script).trim().parse::<f64>().unwrap_or(0.0) as u64;
+                freed_bytes   += freed_b;
+                if freed_b > 0 { files_deleted += 1; }
+            }
             "temp_windows"   => clean_rec!(r"C:\Windows\Temp"),
             "prefetch"       => clean_rec!(r"C:\Windows\Prefetch"),
             "windows_update" => clean_rec!(r"C:\Windows\SoftwareDistribution\Download"),
@@ -874,10 +970,92 @@ fn clean_categories(categories: Vec<String>) -> CleanResult {
                     }
                 }
             }
+            "dx_cache"     => clean_rec!(&format!("{local}\\D3DSCache")),
+            "nvidia_cache" => {
+                clean_rec!(&format!("{local}\\NVIDIA\\DXCache"));
+                clean_rec!(&format!("{local}\\NVIDIA\\GLCache"));
+            }
+            "amd_cache"    => clean_rec!(&format!("{local}\\AMD\\DxCache")),
+            "wer"          => clean_rec!(&format!("{local}\\Microsoft\\Windows\\WER\\ReportArchive")),
+            "recent"       => clean_rec!(&format!("{appdata}\\Microsoft\\Windows\\Recent")),
             _ => {}
         }
     }
     CleanResult { freed_mb: freed_bytes as f32 / 1_048_576.0, files_deleted, files_skipped }
+}
+
+#[tauri::command]
+fn clean_ram() -> Result<RamCleanResult, String> {
+    let script = r#"
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+using System.Diagnostics;
+public class RamCleaner {
+    [DllImport("psapi.dll")] public static extern bool EmptyWorkingSet(IntPtr handle);
+    public static int Clean() {
+        int count = 0;
+        foreach (var p in Process.GetProcesses()) {
+            try { EmptyWorkingSet(p.Handle); count++; } catch {}
+        }
+        return count;
+    }
+}
+'@
+[RamCleaner]::Clean() | Out-Null
+"#;
+    // Mesure avant
+    let mut sys = System::new_all();
+    sys.refresh_memory();
+    let before_bytes = sys.used_memory();
+    let before_mb = before_bytes as f32 / 1_048_576.0;
+
+    let _ = run_ps(script);
+
+    // Mesure après (laisser le temps au kernel de récupérer les pages)
+    std::thread::sleep(std::time::Duration::from_millis(1200));
+    sys.refresh_memory();
+    let after_bytes = sys.used_memory();
+    let after_mb = after_bytes as f32 / 1_048_576.0;
+
+    let freed_mb = if before_bytes > after_bytes {
+        (before_bytes - after_bytes) as f32 / 1_048_576.0
+    } else {
+        0.0
+    };
+
+    Ok(RamCleanResult { before_mb, after_mb, freed_mb })
+}
+
+#[tauri::command]
+fn flush_dns() -> Result<String, String> {
+    run_ps("Clear-DnsClientCache");
+    Ok("Cache DNS vidé".to_string())
+}
+
+#[tauri::command]
+fn empty_recycle_bin() -> Result<CleanResult, String> {
+    // Mesure la corbeille avant
+    let size_script = r#"
+$shell = New-Object -ComObject Shell.Application
+$bin = $shell.Namespace(0xA)
+$total = 0
+foreach ($item in $bin.Items()) { $total += $item.Size }
+$total
+"#;
+    let size_before: u64 = ps_out(size_script).trim().parse().unwrap_or(0);
+
+    run_ps("Clear-RecycleBin -Force -ErrorAction SilentlyContinue");
+
+    let freed_mb = size_before as f32 / 1_048_576.0;
+    Ok(CleanResult { freed_mb, files_deleted: 0, files_skipped: 0 })
+}
+
+#[tauri::command]
+fn kill_process(pid: u32) -> Result<String, String> {
+    let script = format!("Stop-Process -Id {} -Force -ErrorAction SilentlyContinue", pid);
+    run_ps(&script);
+    Ok(format!("Processus {} terminé", pid))
 }
 
 // ─── Jeux installés ──────────────────────────────────────────
@@ -990,34 +1168,65 @@ async fn open_overlay(app: tauri::AppHandle) -> bool {
 pub fn run() {
     let networks = Networks::new_with_refreshed_list();
 
-    // Arc partagé entre le thread stats et les commandes (get_system_info, get_processes)
+    // Arc partagé entre le thread stats et les commandes
     let sys = Arc::new(Mutex::new(System::new_all()));
 
-    // Cache des stats — mis à jour toutes les ~1s par le thread background
+    // Cache stats système — mis à jour toutes les ~1s par le thread background
     let sys_cache = Arc::new(Mutex::new(SystemStats {
         cpu: 0, ram: 0, ram_used_gb: 0.0, ram_total_gb: 0.0,
         temp: 0, disk: 0, disk_used_gb: 0, disk_total_gb: 0, cpu_cores: 0,
     }));
 
-    // Thread background : stats système
+    // Cache processus — mis à jour toutes les ~2s (deux refresh avec délai pour CPU stable)
+    let proc_cache: Arc<Mutex<Vec<ProcessInfo>>> = Arc::new(Mutex::new(Vec::new()));
+
+    // Thread background : stats système + processus
     // CPU nécessite 2 appels refresh séparés par un délai pour mesurer le delta d'usage
     {
-        let sys_bg   = Arc::clone(&sys);
-        let cache_bg = Arc::clone(&sys_cache);
-        std::thread::spawn(move || loop {
-            // 1er appel : établit la baseline CPU
-            sys_bg.lock().unwrap().refresh_cpu_usage();
-            std::thread::sleep(std::time::Duration::from_millis(500));
+        let sys_bg    = Arc::clone(&sys);
+        let cache_bg  = Arc::clone(&sys_cache);
+        let procs_bg  = Arc::clone(&proc_cache);
+        std::thread::spawn(move || {
+            let mut tick: u32 = 0;
+            loop {
+                // 1er appel : établit la baseline CPU (système + processus)
+                {
+                    let mut s = sys_bg.lock().unwrap();
+                    s.refresh_cpu_usage();
+                    if tick % 4 == 0 {
+                        s.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_millis(500));
 
-            // 2e appel : mesure le delta → valeur réelle identique au gestionnaire de tâches
-            {
-                let mut s = sys_bg.lock().unwrap();
-                s.refresh_cpu_usage();
-                s.refresh_memory();
-                *cache_bg.lock().unwrap() = compute_sys_stats(&s);
+                // 2e appel : mesure le delta → valeur réelle
+                {
+                    let mut s = sys_bg.lock().unwrap();
+                    s.refresh_cpu_usage();
+                    s.refresh_memory();
+                    *cache_bg.lock().unwrap() = compute_sys_stats(&s);
+
+                    // Mise à jour processus toutes les ~2s (tick pair)
+                    if tick % 4 == 0 {
+                        s.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+                        let mut procs: Vec<ProcessInfo> = s
+                            .processes()
+                            .values()
+                            .map(|p| ProcessInfo {
+                                pid:       p.pid().as_u32(),
+                                name:      p.name().to_string_lossy().into_owned(),
+                                cpu:       p.cpu_usage(),
+                                memory_mb: p.memory() as f32 / 1_048_576.0,
+                            })
+                            .collect();
+                        procs.sort_by(|a, b| b.cpu.partial_cmp(&a.cpu).unwrap_or(std::cmp::Ordering::Equal));
+                        *procs_bg.lock().unwrap() = procs;
+                    }
+                }
+
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                tick = tick.wrapping_add(1);
             }
-
-            std::thread::sleep(std::time::Duration::from_millis(500));
         });
     }
 
@@ -1035,9 +1244,10 @@ pub fn run() {
     tauri::Builder::default()
         .manage(SysState {
             sys,
-            networks:  Mutex::new((networks, Instant::now())),
-            gpu:       gpu_arc,
+            networks:   Mutex::new((networks, Instant::now())),
+            gpu:        gpu_arc,
             sys_cache,
+            proc_cache,
         })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
@@ -1060,6 +1270,10 @@ pub fn run() {
             toggle_startup_program,
             get_clean_categories,
             clean_categories,
+            clean_ram,
+            flush_dns,
+            empty_recycle_bin,
+            kill_process,
             get_installed_games,
             open_overlay,
             is_admin,
