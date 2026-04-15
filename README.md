@@ -34,21 +34,6 @@ NexBoost est une application desktop Windows conçue pour les gamers souhaitant 
 
 Télécharge le dernier installeur `.exe` depuis la page [Releases](https://github.com/Klovy-Dev/nexboost/releases).
 
-## Développement local
-
-```bash
-# Installer les dépendances
-npm install
-
-# Lancer en mode développement
-npm run tauri dev
-
-# Build de production
-npm run tauri build
-```
-
-> Prérequis : [Node.js](https://nodejs.org/) 18+, [Rust](https://rustup.rs/) stable, [Tauri CLI](https://tauri.app/fr/start/prerequisites/)
-
 ## Licence
 
 MIT © [Klovy-Dev](https://github.com/Klovy-Dev)
