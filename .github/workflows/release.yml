@@ -1,4 +1,4 @@
-name: Release NexBoost
+name: Release PCPulse
 
 on:
   push:
@@ -36,7 +36,6 @@ jobs:
           VITE_TURSO_TOKEN: ${{ secrets.VITE_TURSO_TOKEN }}
         run: npm run tauri build
 
-      # Renommer l'exe + créer le zip Stored + signer
       - name: Prepare release artifacts
         shell: pwsh
         env:
@@ -47,18 +46,15 @@ jobs:
           $version = $tag -replace '^v', ''
           $nsisDir = "src-tauri/target/release/bundle/nsis"
 
-          # -- EXE : renommer en NexBoost-{version}-setup.exe --
           $exe = Get-ChildItem $nsisDir -Filter "*_x64-setup.exe" | Select-Object -First 1
           if (-not $exe) { throw "setup.exe introuvable dans $nsisDir" }
 
-          $newExeName = "NexBoost-$version-setup.exe"
+          $newExeName = "PCPulse-$version-setup.exe"
           $newExePath = Join-Path $nsisDir $newExeName
           Rename-Item $exe.FullName -NewName $newExeName
           Write-Host "EXE -> $newExeName"
 
-          # -- ZIP : toujours recréer avec méthode Stored (0) --
-          # La doc Tauri impose Stored pour les updates NSIS (Deflate/Deflate64 non supportés)
-          $newZipName = "NexBoost-$version-setup.nsis.zip"
+          $newZipName = "PCPulse-$version-setup.nsis.zip"
           $newZipPath = Join-Path $nsisDir $newZipName
 
           Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -72,7 +68,6 @@ jobs:
           $zipArchive.Dispose()
           Write-Host "ZIP cree (Stored) : $newZipName"
 
-          # -- SIGNATURE --
           npm run tauri -- signer sign -k $env:TAURI_SIGNING_PRIVATE_KEY $newZipPath
           if ($LASTEXITCODE -ne 0) { throw "Signature echouee (exit $LASTEXITCODE)" }
           if (-not (Test-Path "$newZipPath.sig")) { throw ".sig introuvable apres signature" }
@@ -81,7 +76,6 @@ jobs:
           Write-Host "=== Artefacts finaux ==="
           Get-ChildItem $nsisDir | ForEach-Object { Write-Host "  $($_.Name)" }
 
-      # Créer le latest.json et publier la release GitHub
       - name: Create GitHub release
         shell: pwsh
         env:
@@ -91,8 +85,8 @@ jobs:
           $version = $tag -replace '^v', ''
           $nsisDir = "src-tauri/target/release/bundle/nsis"
 
-          $newExeName = "NexBoost-$version-setup.exe"
-          $newZipName = "NexBoost-$version-setup.nsis.zip"
+          $newExeName = "PCPulse-$version-setup.exe"
+          $newZipName = "PCPulse-$version-setup.nsis.zip"
           $newSigName = "$newZipName.sig"
 
           $exePath = Join-Path $nsisDir $newExeName
@@ -104,12 +98,12 @@ jobs:
           if (-not (Test-Path $sigPath)) { throw "SIG introuvable : $sigPath" }
 
           $signature   = (Get-Content $sigPath -Raw).Trim()
-          $downloadUrl = "https://github.com/Klovy-Dev/nexboost/releases/download/$tag/$newZipName"
+          $downloadUrl = "https://github.com/Klovy-Dev/PCPulse/releases/download/$tag/$newZipName"
           $pubDate     = (Get-Date -AsUTC -Format "yyyy-MM-ddTHH:mm:ssZ")
 
           [ordered]@{
             version  = $version
-            notes    = "NexBoost $tag"
+            notes    = "PCPulse $tag"
             pub_date = $pubDate
             platforms = @{
               "windows-x86_64" = @{
@@ -122,8 +116,8 @@ jobs:
           Write-Host "=== latest.json ===" ; Get-Content "latest.json"
 
           gh release create $tag `
-            --title "NexBoost $tag" `
-            --notes "NexBoost $tag" `
+            --title "PCPulse $tag" `
+            --notes "PCPulse $tag" `
             $exePath `
             $zipPath `
             "latest.json"
