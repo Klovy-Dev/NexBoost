@@ -53,7 +53,7 @@ export default function Overlay() {
       width: "100vw", height: "100vh",
       background: "rgba(7, 7, 13, 0.92)",
       backdropFilter: "blur(16px)",
-      border: "1px solid rgba(56,189,248,0.15)",
+      border: "1px solid rgba(59,130,246,0.15)",
       borderRadius: 0,
       display: "flex", flexDirection: "column",
       overflow: "hidden",
@@ -78,7 +78,7 @@ export default function Overlay() {
             color: "#38bdf8", fontWeight: 700, fontSize: 9,
             letterSpacing: "0.1em", textTransform: "uppercase",
           }}>
-            NexBoost
+            PCPulse
           </span>
         </div>
         <button

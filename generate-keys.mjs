@@ -12,8 +12,15 @@ import { fileURLToPath } from "url";
 import { join, dirname } from "path";
 
 // ── Charger .env ─────────────────────────────────────────────
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const envPath   = join(__dirname, ".env");
+// Résolution robuste : on essaie import.meta.url puis process.argv[1]
+let scriptDir;
+try {
+  scriptDir = dirname(fileURLToPath(import.meta.url));
+} catch {
+  scriptDir = dirname(process.argv[1]);
+}
+const envPath = join(scriptDir, ".env");
+
 let TURSO_URL = "", TURSO_TOKEN = "";
 try {
   const env = readFileSync(envPath, "utf8");
@@ -22,8 +29,10 @@ try {
     if (k?.trim() === "VITE_TURSO_URL")   TURSO_URL   = v.join("=").trim();
     if (k?.trim() === "VITE_TURSO_TOKEN")  TURSO_TOKEN = v.join("=").trim();
   }
-} catch {
+} catch (e) {
   console.error("❌ Impossible de lire le fichier .env");
+  console.error("   Chemin testé :", envPath);
+  console.error("   Erreur       :", e.message);
   process.exit(1);
 }
 

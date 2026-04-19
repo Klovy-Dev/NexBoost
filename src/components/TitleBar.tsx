@@ -1,6 +1,7 @@
 import { useRef, useEffect } from "react";
 import { Minus, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import pcpulseLogo from "../assets/pcpulse-logo.svg";
 
 export default function TitleBar() {
   const barRef = useRef<HTMLDivElement>(null);
@@ -57,35 +58,55 @@ export default function TitleBar() {
     <div
       ref={barRef}
       data-tauri-drag-region
-      className="h-8 flex items-center justify-between shrink-0 select-none"
-      style={{ background: "#07070d", borderBottom: "1px solid rgba(255,255,255,0.06)", cursor: "default" }}
+      style={{
+        height: 32, display: "flex", alignItems: "center", justifyContent: "space-between",
+        flexShrink: 0, background: "rgba(8,8,15,0.98)", borderBottom: "1px solid rgba(255,255,255,0.06)",
+        cursor: "default", position: "relative", zIndex: 10,
+      }}
     >
-      <div className="w-20" data-tauri-drag-region />
-      <span
-        data-tauri-drag-region
-        className="text-[10px] font-bold tracking-[0.18em] font-orbitron"
-        style={{ color: "#38bdf8" }}
-      >
-        NEXBOOST
-      </span>
-      <div className="w-20 flex justify-end pr-2 gap-0.5">
+      <div style={{ width: 80 }} data-tauri-drag-region />
+
+      <div data-tauri-drag-region style={{ display: "flex", alignItems: "center", gap: 7 }}>
+        <img
+          src={pcpulseLogo}
+          alt="PCPulse"
+          style={{
+            width: 22, height: 22, borderRadius: 6, flexShrink: 0,
+            filter: "brightness(1.4) drop-shadow(0 0 5px rgba(66,165,245,0.7))",
+          }}
+        />
+        <span style={{
+          fontSize: 10, fontWeight: 700, letterSpacing: "0.2em",
+          fontFamily: "'Orbitron', sans-serif", color: "rgba(248,250,252,0.55)",
+        }}>
+          PCPULSE
+        </span>
+      </div>
+
+      <div style={{ width: 80, display: "flex", justifyContent: "flex-end", paddingRight: 6, gap: 2 }}>
         <button
           onClick={handleMinimize}
-          className="w-6 h-6 flex items-center justify-center rounded transition-colors"
-          style={{ color: "#94a3b8" }}
-          onMouseEnter={e => { e.currentTarget.style.background = "#f1f5f9"; e.currentTarget.style.color = "#475569"; }}
-          onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#94a3b8"; }}
+          style={{
+            width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center",
+            borderRadius: 6, background: "transparent", border: "none", color: "#475569", cursor: "pointer",
+            transition: "all 0.12s",
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.08)"; e.currentTarget.style.color = "#94a3b8"; }}
+          onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#475569"; }}
         >
-          <Minus size={12} />
+          <Minus size={11} />
         </button>
         <button
           onClick={handleClose}
-          className="w-6 h-6 flex items-center justify-center rounded transition-colors"
-          style={{ color: "#94a3b8" }}
-          onMouseEnter={e => { e.currentTarget.style.background = "rgba(220,38,38,0.08)"; e.currentTarget.style.color = "#ef4444"; }}
-          onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#94a3b8"; }}
+          style={{
+            width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center",
+            borderRadius: 6, background: "transparent", border: "none", color: "#475569", cursor: "pointer",
+            transition: "all 0.12s",
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = "rgba(239,68,68,0.12)"; e.currentTarget.style.color = "#f87171"; }}
+          onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#475569"; }}
         >
-          <X size={12} />
+          <X size={11} />
         </button>
       </div>
     </div>

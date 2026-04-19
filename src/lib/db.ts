@@ -4,7 +4,7 @@ const TURSO_URL   = import.meta.env.VITE_TURSO_URL   as string;
 const TURSO_TOKEN = import.meta.env.VITE_TURSO_TOKEN  as string;
 
 if (!TURSO_URL || !TURSO_TOKEN) {
-  console.warn("[NexBoost] Variables VITE_TURSO_URL ou VITE_TURSO_TOKEN manquantes dans .env");
+  console.warn("[PCPulse] Variables VITE_TURSO_URL ou VITE_TURSO_TOKEN manquantes dans .env");
 }
 
 export const db = createClient({
@@ -129,6 +129,11 @@ export async function loginUser(email: string, password: string): Promise<LoginR
     planExpiresAt: plan === "pro" ? planExpiresAt : null,
     billingCycle:  plan === "pro" ? billingCycle  : null,
   };
+}
+
+export async function checkEmailExists(email: string): Promise<boolean> {
+  const result = await db.execute({ sql: "SELECT id FROM users WHERE email = ?", args: [email] });
+  return result.rows.length > 0;
 }
 
 // ── Benchmark ─────────────────────────────────────────────────────────────────

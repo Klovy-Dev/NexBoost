@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import nexboostLogo from "../assets/nexboost-logo.svg";
+import pcpulseLogo from "../assets/pcpulse-logo.svg";
 import { AlertTriangle, CheckCircle, Crown, LogOut, Minus, X, Zap, Settings, Wifi, Trash2, Gamepad2, LayoutDashboard, ShieldAlert, ShieldCheck, Download, ListFilter } from "lucide-react";
 import { check as checkUpdate } from "@tauri-apps/plugin-updater";
 import { exit as processExit } from "@tauri-apps/plugin-process";
@@ -23,26 +23,24 @@ import type { PlanActivationData } from "../App";
 interface Props { user: UserData; onLogout: () => void; onPlanActivated: (d: PlanActivationData) => void; }
 
 const BG = {
-  background: "#07070d",
+  background: "#060612",
   backgroundImage: `
-    repeating-radial-gradient(ellipse at 20% 55%, transparent 0, transparent 58px, rgba(255,255,255,0.022) 59px, rgba(255,255,255,0.022) 60px),
-    repeating-radial-gradient(ellipse at 78% 28%, transparent 0, transparent 78px, rgba(255,255,255,0.018) 79px, rgba(255,255,255,0.018) 80px),
-    repeating-radial-gradient(ellipse at 50% 80%, transparent 0, transparent 98px, rgba(255,255,255,0.014) 99px, rgba(255,255,255,0.014) 100px)
+    radial-gradient(ellipse 80% 60% at 0% 0%,    rgba(59,130,246,0.10) 0%, transparent 55%),
+    radial-gradient(ellipse 60% 50% at 100% 100%, rgba(99,102,241,0.08) 0%, transparent 55%)
   `,
 } as React.CSSProperties;
 
-const NAV_ITEMS: { id: Tab; icon: React.ReactNode; label: string }[] = [
-  { id: "dashboard",   icon: <LayoutDashboard size={16} />, label: "Dashboard"     },
-  { id: "performance", icon: <Zap size={16} />,             label: "Optimisations" },
-  { id: "network",     icon: <Wifi size={16} />,            label: "Réseau"        },
-  { id: "processes",   icon: <ListFilter size={16} />,      label: "Processus"     },
-  { id: "cleanup",     icon: <Trash2 size={16} />,          label: "Nettoyage"     },
-  { id: "games",       icon: <Gamepad2 size={16} />,        label: "Jeux"          },
-  { id: "system",      icon: <Settings size={16} />,        label: "Système"       },
+const NAV_ITEMS: { id: Tab; icon: React.ReactNode; label: string; color: string }[] = [
+  { id: "dashboard",   icon: <LayoutDashboard size={14} />, label: "Dashboard",     color: "#3b82f6" },
+  { id: "performance", icon: <Zap size={14} />,             label: "Optimisations", color: "#f59e0b" },
+  { id: "network",     icon: <Wifi size={14} />,            label: "Réseau",        color: "#10b981" },
+  { id: "processes",   icon: <ListFilter size={14} />,      label: "Processus",     color: "#8b5cf6" },
+  { id: "cleanup",     icon: <Trash2 size={14} />,          label: "Nettoyage",     color: "#06b6d4" },
+  { id: "games",       icon: <Gamepad2 size={14} />,        label: "Jeux",          color: "#ef4444" },
+  { id: "system",      icon: <Settings size={14} />,        label: "Système",       color: "#6366f1" },
 ];
 
 const win = getCurrentWindow();
-
 const handleDragStart = (e: React.MouseEvent) => {
   if (e.button !== 0) return;
   if ((e.target as HTMLElement).closest("button")) return;
@@ -50,7 +48,8 @@ const handleDragStart = (e: React.MouseEvent) => {
 };
 
 export default function Dashboard({ user, onLogout, onPlanActivated }: Props) {
-  const isPro = user.plan === "pro";
+  const isPro   = user.plan === "pro";
+  const isBeta  = localStorage.getItem("pcpulse_beta") === "true";
   const { stats, history, info, ping, pingHistory } = useSystemStats();
 
   const [activeTab,      setActiveTab]      = useState<Tab>("dashboard");
@@ -66,10 +65,10 @@ export default function Dashboard({ user, onLogout, onPlanActivated }: Props) {
   const [installing,     setInstalling]     = useState(false);
   const [updateError,    setUpdateError]    = useState<string | null>(null);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
-  const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const tempNotifSentAt = useRef<number>(0);
+  const cpuNotifSentAt  = useRef<number>(0);
+  const ramNotifSentAt  = useRef<number>(0);
 
-  // ── Vérification mise à jour (après 15s pour ne pas ralentir le démarrage) ──
   useEffect(() => {
     const t = setTimeout(async () => {
       try {
@@ -77,7 +76,7 @@ export default function Dashboard({ user, onLogout, onPlanActivated }: Props) {
         if (update?.available) {
           setUpdateVersion(update.version);
           setShowUpdateModal(true);
-          notify("🔄 Mise à jour disponible", `NexBoost v${update.version} est prêt à installer !`);
+          notify("🔄 Mise à jour disponible", `PCPulse v${update.version} est prêt !`);
         }
       } catch {}
     }, 15_000);
@@ -85,103 +84,68 @@ export default function Dashboard({ user, onLogout, onPlanActivated }: Props) {
   }, []);
 
   const handleInstallUpdate = async () => {
-    setInstalling(true);
-    setUpdateError(null);
+    setInstalling(true); setUpdateError(null);
     try {
       const update = await checkUpdate();
-      if (update?.available) {
-        await update.downloadAndInstall();
-        await processExit(0);
-      }
+      if (update?.available) { await update.downloadAndInstall(); await processExit(0); }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setUpdateError(msg);
+      setUpdateError(e instanceof Error ? e.message : String(e));
       setInstalling(false);
     }
   };
 
-  // ── Vérification droits admin au démarrage ──
-  useEffect(() => {
-    invoke<boolean>("is_admin").then(setIsAdmin).catch(() => setIsAdmin(false));
-  }, []);
-
+  useEffect(() => { invoke<boolean>("is_admin").then(setIsAdmin).catch(() => setIsAdmin(false)); }, []);
   const handleRelaunchAdmin = async () => {
     setRelaunching(true);
     try { await invoke("relaunch_as_admin"); } catch {}
     setRelaunching(false);
   };
 
-  // ── Chargement de l'état réel des tweaks depuis le registre ──
   useEffect(() => {
     invoke<TweakStatus[]>("get_tweaks_status")
       .then(statuses => {
-        const states: Record<string, boolean> = {};
-        statuses.forEach(s => { states[s.id] = s.active; });
-        setTweakStates(states);
-      })
-      .catch(() => {});
+        const s: Record<string, boolean> = {};
+        statuses.forEach(st => { s[st.id] = st.active; });
+        setTweakStates(s);
+      }).catch(() => {});
   }, []);
 
   const thresholds = (() => {
-    try { return { temp: 85, cpu: 90, ram: 90, ...JSON.parse(localStorage.getItem("nexboost_thresholds") || "{}") }; }
+    try { return { temp: 85, cpu: 90, ram: 90, ...JSON.parse(localStorage.getItem("pcpulse_thresholds") || "{}") }; }
     catch { return { temp: 85, cpu: 90, ram: 90 }; }
   })();
-  const tempAlert = stats.temp > thresholds.temp && stats.temp > 0;
-  const ramAlert  = stats.ram_total_gb > 0 && (stats.ram_used_gb / stats.ram_total_gb) * 100 > thresholds.ram;
-  const perfScore  = Math.max(0, Math.min(100, Math.floor(100 - (stats.cpu + stats.ram) / 4)));
+  const tempAlert   = stats.temp > thresholds.temp && stats.temp > 0;
+  const ramAlert    = stats.ram_total_gb > 0 && (stats.ram_used_gb / stats.ram_total_gb) * 100 > thresholds.ram;
+  const perfScore   = Math.max(0, Math.min(100, Math.floor(100 - (stats.cpu + stats.ram) / 4)));
   const activeCount = Object.values(tweakStates).filter(Boolean).length;
 
-  const cpuNotifSentAt  = useRef<number>(0);
-  const ramNotifSentAt  = useRef<number>(0);
-
-  /* Alerte température */
   useEffect(() => {
     if (stats.temp > 0 && stats.temp > thresholds.temp) {
       const now = Date.now();
-      if (now - tempNotifSentAt.current > 5 * 60 * 1000) {
-        tempNotifSentAt.current = now;
-        notify("⚠️ Température CPU élevée", `CPU à ${stats.temp}°C — pensez à nettoyer vos ventilateurs.`);
-      }
+      if (now - tempNotifSentAt.current > 5 * 60 * 1000) { tempNotifSentAt.current = now; notify("⚠️ Température CPU élevée", `CPU à ${stats.temp}°C`); }
     }
   }, [stats.temp, thresholds.temp]);
-
-  /* Alerte CPU */
   useEffect(() => {
     if (stats.cpu > thresholds.cpu) {
       const now = Date.now();
-      if (now - cpuNotifSentAt.current > 5 * 60 * 1000) {
-        cpuNotifSentAt.current = now;
-        notify("⚠️ Charge CPU élevée", `CPU à ${stats.cpu}% — seuil de ${thresholds.cpu}% dépassé.`);
-      }
+      if (now - cpuNotifSentAt.current > 5 * 60 * 1000) { cpuNotifSentAt.current = now; notify("⚠️ Charge CPU élevée", `CPU à ${stats.cpu}%`); }
     }
   }, [stats.cpu, thresholds.cpu]);
-
-  /* Alerte RAM */
   useEffect(() => {
     if (ramAlert) {
       const now = Date.now();
       if (now - ramNotifSentAt.current > 5 * 60 * 1000) {
         ramNotifSentAt.current = now;
-        const pct = Math.round((stats.ram_used_gb / stats.ram_total_gb) * 100);
-        notify("⚠️ Utilisation RAM élevée", `RAM à ${pct}% (${stats.ram_used_gb}/${stats.ram_total_gb} GB) — seuil de ${thresholds.ram}% dépassé.`);
+        notify("⚠️ RAM élevée", `RAM à ${Math.round((stats.ram_used_gb / stats.ram_total_gb) * 100)}%`);
       }
     }
   }, [ramAlert, thresholds.ram]);
 
-  /* GPU polling — 5s, pause si fenêtre cachée */
   useEffect(() => {
-    const fetch = () => {
-      if (document.hidden) return;
-      invoke<GpuStats>("get_gpu_stats").then(g => {
-        setGpuHistory(h => [...h.slice(-29), g.usage]);
-      }).catch(() => {});
-    };
-    fetch();
-    const iv = setInterval(fetch, 5000);
-    return () => clearInterval(iv);
+    const fetch = () => { if (document.hidden) return; invoke<GpuStats>("get_gpu_stats").then(g => setGpuHistory(h => [...h.slice(-29), g.usage])).catch(() => {}); };
+    fetch(); const iv = setInterval(fetch, 5000); return () => clearInterval(iv);
   }, []);
 
-  /* Raccourcis clavier 1-6 */
   useEffect(() => {
     const TABS: Tab[] = ["dashboard", "performance", "network", "processes", "cleanup", "games", "system"];
     const handler = (e: KeyboardEvent) => {
@@ -199,18 +163,30 @@ export default function Dashboard({ user, onLogout, onPlanActivated }: Props) {
     setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 3500);
   };
 
+  const parseTweakMsg = (result: TweakResult, id: string, wasActive: boolean): string => {
+    if (result.success) {
+      const tw = TWEAKS.find(t => t.id === id);
+      return wasActive ? `${tw?.label ?? id} — désactivé` : `${tw?.label ?? id} — activé`;
+    }
+    const m = (result.message ?? "").toLowerCase();
+    if (m.includes("admin") || m.includes("privilege") || m.includes("access denied") || m.includes("elevation"))
+      return `Admin requis — relancez PCPulse en administrateur`;
+    if (m.includes("unsupported") || m.includes("not supported") || m.includes("not found") || m.includes("introuvable"))
+      return `Non supporté sur ce système Windows`;
+    if (m.includes("blocked") || m.includes("restricted") || m.includes("policy"))
+      return `Bloqué par une stratégie Windows`;
+    return result.message || `Échec pour '${TWEAKS.find(t => t.id === id)?.label ?? id}'`;
+  };
+
   const handleToggleTweak = async (id: string) => {
     const isActive = tweakStates[id] ?? false;
     setTweakLoading(p => ({ ...p, [id]: true }));
     try {
       const result = await invoke<TweakResult>(isActive ? "revert_tweak" : "apply_tweak", { id });
       if (result.success) setTweakStates(p => ({ ...p, [id]: !isActive }));
-      toast(result.message, result.success);
-    } catch {
-      toast(`Erreur pour le tweak '${id}'`, false);
-    } finally {
-      setTweakLoading(p => ({ ...p, [id]: false }));
-    }
+      toast(parseTweakMsg(result, id, isActive), result.success);
+    } catch { toast(`Erreur réseau pour '${TWEAKS.find(t => t.id === id)?.label ?? id}'`, false); }
+    finally { setTweakLoading(p => ({ ...p, [id]: false })); }
   };
 
   const handleBigBoost = async () => {
@@ -223,513 +199,236 @@ export default function Dashboard({ user, onLogout, onPlanActivated }: Props) {
       setOptimizedCount(i + 1);
     }
     setOptimizing(false);
-    toast(`Boost appliqué — ${TWEAKS.length} optimisations traitées`, true);
-    notify("✅ Boost NexBoost terminé", `${TWEAKS.length} optimisations appliquées avec succès.`);
+    toast(`Boost appliqué — ${TWEAKS.length} optimisations`, true);
+    notify("✅ Boost terminé", `${TWEAKS.length} optimisations appliquées.`);
     setActiveTab("performance");
   };
 
   return (
     <div className="fixed inset-0 select-none animate-fadeIn" style={BG}>
-      <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
+      <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
 
-        {/* ── Sidebar ── */}
-        <aside
+        {/* ══ Barre titre (drag) ══ */}
+        <div
           onMouseDown={handleDragStart}
-          onMouseEnter={() => setSidebarExpanded(true)}
-          onMouseLeave={() => setSidebarExpanded(false)}
           style={{
-            width: sidebarExpanded ? 160 : 52,
-            background: "#09091a",
-            borderRight: "1px solid rgba(255,255,255,0.05)",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: sidebarExpanded ? "flex-start" : "center",
-            padding: "12px 0 10px",
-            flexShrink: 0,
-            userSelect: "none",
-            overflow: "hidden",
-            transition: "width 0.2s ease",
+            height: 34, flexShrink: 0,
+            display: "flex", alignItems: "center", padding: "0 10px 0 14px",
+            userSelect: "none", cursor: "default",
+            background: "rgba(4,4,14,0.97)",
+            borderBottom: "1px solid rgba(255,255,255,0.07)",
+            zIndex: 10,
           }}
         >
-          {/* Logo NexBoost */}
-          <div style={{
-            display: "flex", alignItems: "center", gap: 8,
-            padding: sidebarExpanded ? "0 12px" : "0",
-            justifyContent: sidebarExpanded ? "flex-start" : "center",
-            marginBottom: 14, width: "100%", overflow: "hidden",
-          }}>
-            <img
-              src={nexboostLogo}
-              alt="NexBoost"
-              style={{ width: 30, height: 30, borderRadius: 7, flexShrink: 0 }}
-            />
-            {sidebarExpanded && (
-              <span style={{ fontSize: 11, fontFamily: "'Orbitron', monospace", fontWeight: 700, color: "#f1f5f9", letterSpacing: "0.08em", whiteSpace: "nowrap", overflow: "hidden" }}>
-                NEXBOOST
-              </span>
+          {/* Logo */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+            <div style={{ width: 20, height: 20, borderRadius: 5, background: "rgba(99,102,241,0.2)", border: "1px solid rgba(99,102,241,0.35)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <img src={pcpulseLogo} alt="PCPulse" style={{ width: 14, height: 14, borderRadius: 3 }} />
+            </div>
+            <span style={{ fontSize: 10, fontFamily: "'Orbitron', sans-serif", fontWeight: 700, color: "#818cf8", letterSpacing: "0.15em" }}>
+              PCPULSE
+            </span>
+          </div>
+
+          {/* Status */}
+          <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, padding: "0 18px" }}>
+            {isAdmin !== false ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 5px #22c55e" }} />
+                <span style={{ fontSize: 8, color: "#22c55e", fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase" }}>LIVE</span>
+              </div>
+            ) : (
+              <>
+                <ShieldAlert size={9} style={{ color: "#fbbf24" }} />
+                <span style={{ fontSize: 9, color: "#fbbf24" }}>Mode limité</span>
+                <button
+                  onClick={handleRelaunchAdmin} disabled={relaunching}
+                  style={{ padding: "2px 8px", borderRadius: 4, fontSize: 9, fontWeight: 700, background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.25)", color: "#fbbf24", cursor: "pointer" }}
+                >
+                  {relaunching ? "..." : "→ Admin"}
+                </button>
+              </>
+            )}
+            {updateVersion && !showUpdateModal && (
+              <button onClick={() => setShowUpdateModal(true)} style={{ display: "flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 4, fontSize: 9, fontWeight: 700, background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.25)", color: "#60a5fa", cursor: "pointer" }}>
+                <Download size={8} /> v{updateVersion}
+              </button>
+            )}
+            {tempAlert && (
+              <div style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 9, color: "#f87171" }}>
+                <AlertTriangle size={9} /> {stats.temp}°C
+              </div>
             )}
           </div>
 
-          {/* Navigation */}
-          <nav style={{ display: "flex", flexDirection: "column", gap: 4, width: "100%", padding: "0 8px" }}>
-            {NAV_ITEMS.map(({ id, icon, label }) => (
+          {/* User */}
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginRight: 8 }}>
+            <div style={{
+              width: 20, height: 20, borderRadius: "50%",
+              background: isPro ? "linear-gradient(135deg,#7c3aed,#a855f7)" : "rgba(59,130,246,0.15)",
+              border: `1px solid ${isPro ? "rgba(168,85,247,0.4)" : "rgba(59,130,246,0.25)"}`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 9, fontWeight: 800, color: isPro ? "#fff" : "#60a5fa",
+            }}>
+              {isPro ? <Crown size={9} /> : user.username.charAt(0).toUpperCase()}
+            </div>
+            <span style={{ fontSize: 10, color: "#374151" }}>{user.username}</span>
+            {isBeta && (
+              <span style={{ fontSize: 8, fontWeight: 800, padding: "1px 6px", borderRadius: 4, background: "rgba(168,85,247,0.18)", border: "1px solid rgba(168,85,247,0.35)", color: "#c084fc", letterSpacing: "0.08em" }}>BÊTA</span>
+            )}
+          </div>
+
+          {/* Window controls */}
+          <div style={{ display: "flex", gap: 2 }}>
+            {[
+              { onClick: () => win.minimize(), icon: <Minus size={9} />, hover: "rgba(255,255,255,0.08)", hoverColor: "#94a3b8" },
+              { onClick: () => win.close(),    icon: <X size={9} />,     hover: "rgba(239,68,68,0.15)",  hoverColor: "#ef4444" },
+            ].map((btn, i) => (
+              <button
+                key={i}
+                onClick={btn.onClick}
+                style={{ width: 24, height: 24, borderRadius: 5, background: "transparent", border: "none", color: "#374151", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.12s" }}
+                onMouseEnter={e => { e.currentTarget.style.background = btn.hover; e.currentTarget.style.color = btn.hoverColor; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#374151"; }}
+              >
+                {btn.icon}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* ══ Navigation horizontale ══ */}
+        <nav style={{
+          height: 50, flexShrink: 0,
+          display: "flex", alignItems: "stretch",
+          background: "rgba(6,6,16,0.98)",
+          borderBottom: "1px solid rgba(255,255,255,0.08)",
+          padding: "0 6px",
+          gap: 1,
+        }}>
+          {NAV_ITEMS.map(({ id, icon, label, color }) => {
+            const active = activeTab === id;
+            return (
               <button
                 key={id}
                 onClick={() => setActiveTab(id)}
-                title={sidebarExpanded ? undefined : label}
                 style={{
+                  display: "flex", alignItems: "center", gap: 7,
+                  padding: "0 20px", flexShrink: 0,
+                  background: active ? `${color}0e` : "transparent",
+                  border: "none",
+                  borderBottom: `2px solid ${active ? color : "transparent"}`,
+                  borderTop: "2px solid transparent",
+                  color: active ? color : "#374151",
+                  cursor: "pointer", transition: "all 0.12s",
+                  fontSize: 12, fontWeight: active ? 700 : 500,
+                  borderRadius: 0, outline: "none",
                   position: "relative",
-                  width: "100%", height: 36, borderRadius: 7,
-                  display: "flex", alignItems: "center",
-                  justifyContent: sidebarExpanded ? "flex-start" : "center",
-                  gap: 8,
-                  padding: sidebarExpanded ? "0 10px" : "0",
-                  background: activeTab === id ? "rgba(56,189,248,0.12)" : "transparent",
-                  border: activeTab === id ? "1px solid rgba(56,189,248,0.22)" : "1px solid transparent",
-                  color: activeTab === id ? "#38bdf8" : "#4b5563",
-                  cursor: "pointer",
-                  transition: "all 0.15s",
-                  flexShrink: 0,
-                  overflow: "hidden",
-                  whiteSpace: "nowrap",
                 }}
-                onMouseEnter={e => {
-                  if (activeTab !== id) {
-                    e.currentTarget.style.background = "rgba(255,255,255,0.05)";
-                    e.currentTarget.style.color = "#94a3b8";
-                  }
-                }}
-                onMouseLeave={e => {
-                  if (activeTab !== id) {
-                    e.currentTarget.style.background = "transparent";
-                    e.currentTarget.style.color = "#4b5563";
-                  }
-                }}
+                onMouseEnter={e => { if (!active) { e.currentTarget.style.color = "#94a3b8"; e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }}}
+                onMouseLeave={e => { if (!active) { e.currentTarget.style.color = "#374151"; e.currentTarget.style.background = "transparent"; }}}
               >
-                <span style={{ flexShrink: 0, display: "flex" }}>{icon}</span>
-                {sidebarExpanded && (
-                  <span style={{ fontSize: 12, fontWeight: 500 }}>{label}</span>
-                )}
+                <span style={{ display: "flex", opacity: active ? 1 : 0.45 }}>{icon}</span>
+                {label}
                 {id === "dashboard" && tempAlert && (
-                  <span
-                    style={{
-                      position: "absolute", top: 5, right: 5,
-                      width: 5, height: 5, borderRadius: "50%",
-                      background: "#f87171",
-                    }}
-                  />
+                  <span style={{ position: "absolute", top: 8, right: 6, width: 5, height: 5, borderRadius: "50%", background: "#f87171", boxShadow: "0 0 4px #f87171" }} />
                 )}
               </button>
-            ))}
-          </nav>
+            );
+          })}
 
           <div style={{ flex: 1 }} />
 
-          {/* Avatar utilisateur */}
-          <div
-            title={user.username}
-            style={{
-              height: 28, marginBottom: 6,
-              display: "flex", alignItems: "center", gap: 8,
-              padding: sidebarExpanded ? "0 12px" : "0",
-              justifyContent: sidebarExpanded ? "flex-start" : "center",
-              width: "100%", overflow: "hidden",
-            }}
-          >
-            <div style={{
-              width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 11, fontWeight: 700,
-              background: isPro ? "rgba(168,85,247,0.2)" : "rgba(56,189,248,0.15)",
-              border: `1px solid ${isPro ? "rgba(168,85,247,0.4)" : "rgba(56,189,248,0.3)"}`,
-              color: isPro ? "#c084fc" : "#38bdf8",
-            }}>
-              {isPro ? <Crown size={11} /> : user.username.charAt(0).toUpperCase()}
-            </div>
-            {sidebarExpanded && (
-              <span style={{ fontSize: 11, color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {user.username}
-              </span>
-            )}
-          </div>
-
-          {/* Indicateur admin */}
-          {isAdmin !== null && (
-            <div
-              title={isAdmin ? "Administrateur" : "Mode limité — cliquer pour relancer en admin"}
-              onClick={isAdmin ? undefined : handleRelaunchAdmin}
-              style={{
-                height: 28, marginBottom: 4, width: "100%",
-                display: "flex", alignItems: "center", gap: 8,
-                padding: sidebarExpanded ? "0 12px" : "0",
-                justifyContent: sidebarExpanded ? "flex-start" : "center",
-                flexShrink: 0, cursor: isAdmin ? "default" : "pointer",
-                overflow: "hidden",
-              }}
-            >
-              <div style={{
-                width: 28, height: 28, borderRadius: 7, flexShrink: 0,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                background: isAdmin ? "rgba(74,222,128,0.1)" : "rgba(251,191,36,0.1)",
-                border: `1px solid ${isAdmin ? "rgba(74,222,128,0.25)" : "rgba(251,191,36,0.3)"}`,
-                color: isAdmin ? "#4ade80" : "#fbbf24",
-                transition: "all 0.15s",
-              }}>
-                {isAdmin ? <ShieldCheck size={12} /> : <ShieldAlert size={12} />}
+          {/* Admin + Logout */}
+          <div style={{ display: "flex", alignItems: "center", gap: 3, padding: "0 6px" }}>
+            {isAdmin !== null && (
+              <div
+                title={isAdmin ? "Administrateur" : "Mode limité — cliquer pour relancer"}
+                onClick={isAdmin ? undefined : handleRelaunchAdmin}
+                style={{
+                  width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  background: isAdmin ? "rgba(74,222,128,0.08)" : "rgba(251,191,36,0.08)",
+                  border: `1px solid ${isAdmin ? "rgba(74,222,128,0.18)" : "rgba(251,191,36,0.22)"}`,
+                  color: isAdmin ? "#4ade80" : "#fbbf24",
+                  cursor: isAdmin ? "default" : "pointer", transition: "all 0.15s",
+                }}
+              >
+                {isAdmin ? <ShieldCheck size={13} /> : <ShieldAlert size={13} />}
               </div>
-              {sidebarExpanded && (
-                <span style={{ fontSize: 11, color: isAdmin ? "#4ade80" : "#fbbf24", whiteSpace: "nowrap", overflow: "hidden" }}>
-                  {isAdmin ? "Admin" : "Mode limité"}
-                </span>
-              )}
-            </div>
-          )}
-
-          {/* Bouton déconnexion */}
-          <div style={{ width: "100%", padding: "0 8px" }}>
+            )}
             <button
-              onClick={onLogout}
-              title="Se déconnecter"
-              style={{
-                width: "100%", height: 32, borderRadius: 7, marginBottom: 6,
-                display: "flex", alignItems: "center",
-                justifyContent: sidebarExpanded ? "flex-start" : "center",
-                gap: 8, padding: sidebarExpanded ? "0 10px" : "0",
-                background: "transparent", border: "1px solid transparent",
-                color: "#374151", cursor: "pointer", transition: "all 0.15s", flexShrink: 0,
-                overflow: "hidden", whiteSpace: "nowrap",
-              }}
-              onMouseEnter={e => {
-                e.currentTarget.style.background = "rgba(248,113,113,0.1)";
-                e.currentTarget.style.borderColor = "rgba(248,113,113,0.25)";
-                e.currentTarget.style.color = "#f87171";
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.background = "transparent";
-                e.currentTarget.style.borderColor = "transparent";
-                e.currentTarget.style.color = "#374151";
-              }}
+              onClick={onLogout} title="Déconnexion"
+              style={{ width: 32, height: 32, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", border: "1px solid transparent", color: "#374151", cursor: "pointer", transition: "all 0.15s" }}
+              onMouseEnter={e => { e.currentTarget.style.background = "rgba(248,113,113,0.1)"; e.currentTarget.style.borderColor = "rgba(248,113,113,0.22)"; e.currentTarget.style.color = "#f87171"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = "transparent"; e.currentTarget.style.color = "#374151"; }}
             >
-              <span style={{ flexShrink: 0, display: "flex" }}><LogOut size={14} /></span>
-              {sidebarExpanded && <span style={{ fontSize: 12 }}>Déconnexion</span>}
+              <LogOut size={13} />
             </button>
           </div>
-        </aside>
+        </nav>
 
-        {/* ── Zone principale ── */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-
-          {/* ── Barre du haut (drag + fenêtre) ── */}
-          <div
-            onMouseDown={handleDragStart}
-            style={{
-              height: 30,
-              display: "flex", alignItems: "center", justifyContent: "flex-end",
-              padding: "0 6px",
-              flexShrink: 0,
-              userSelect: "none",
-              cursor: "default",
-            }}
-          >
-            {/* Gauche : alerte admin / update / live */}
-            <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, paddingLeft: 4, minWidth: 0 }}>
-              {isAdmin === false ? (
-                /* ── Alerte admin dans la titlebar ── */
-                <>
-                  <ShieldAlert size={10} style={{ color: "#fbbf24", flexShrink: 0 }} />
-                  <span style={{ fontSize: 9, color: "#fbbf24", fontWeight: 500, whiteSpace: "nowrap" }}>
-                    Mode limité
-                  </span>
-                  <button
-                    onClick={handleRelaunchAdmin}
-                    disabled={relaunching}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 4,
-                      padding: "2px 8px", borderRadius: 4,
-                      fontSize: 9, fontWeight: 700,
-                      cursor: relaunching ? "not-allowed" : "pointer",
-                      background: "rgba(251,191,36,0.12)",
-                      border: "1px solid rgba(251,191,36,0.3)",
-                      color: "#fbbf24", transition: "all 0.15s", flexShrink: 0,
-                    }}
-                    onMouseEnter={e => { if (!relaunching) e.currentTarget.style.background = "rgba(251,191,36,0.22)"; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = "rgba(251,191,36,0.12)"; }}
-                  >
-                    {relaunching
-                      ? <div className="animate-spin" style={{ width: 7, height: 7, borderRadius: "50%", border: "2px solid rgba(251,191,36,0.2)", borderTopColor: "#fbbf24" }} />
-                      : <ShieldAlert size={8} />}
-                    {relaunching ? "Relancement..." : "Relancer en admin"}
-                  </button>
-                </>
-              ) : (
-                /* ── Indicateur live + bouton update si dispo ── */
-                <>
-                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                    <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#22c55e" }} />
-                    <span style={{ fontSize: 8, letterSpacing: "0.08em", textTransform: "uppercase", color: "#1e3a2f" }}>
-                      Live
-                    </span>
-                  </div>
-                  {updateVersion && !showUpdateModal && (
-                    <button
-                      onClick={() => setShowUpdateModal(true)}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 4,
-                        padding: "2px 8px", borderRadius: 4,
-                        fontSize: 9, fontWeight: 700,
-                        background: "rgba(56,189,248,0.12)",
-                        border: "1px solid rgba(56,189,248,0.3)",
-                        color: "#38bdf8", cursor: "pointer", transition: "all 0.15s", flexShrink: 0,
-                      }}
-                      onMouseEnter={e => { e.currentTarget.style.background = "rgba(56,189,248,0.22)"; }}
-                      onMouseLeave={e => { e.currentTarget.style.background = "rgba(56,189,248,0.12)"; }}
-                    >
-                      <Download size={8} /> v{updateVersion} dispo
-                    </button>
-                  )}
-                  {tempAlert && (
-                    <div
-                      className="animate-fadeIn"
-                      style={{
-                        fontSize: 8, fontWeight: 600, padding: "1px 5px", borderRadius: 3,
-                        background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.2)",
-                        color: "#f87171", display: "flex", alignItems: "center", gap: 3,
-                      }}
-                    >
-                      <AlertTriangle size={7} /> {stats.temp}°C
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-
-            {/* Minimize + Close */}
-            <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-              <button
-                onClick={() => win.minimize().catch(() => {})}
-                style={{
-                  width: 22, height: 22, borderRadius: 4, background: "transparent",
-                  border: "none", color: "#374151", cursor: "pointer",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  transition: "all 0.15s",
-                }}
-                onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.07)"; e.currentTarget.style.color = "#94a3b8"; }}
-                onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#374151"; }}
-              >
-                <Minus size={10} />
-              </button>
-              <button
-                onClick={() => win.close().catch(() => {})}
-                style={{
-                  width: 22, height: 22, borderRadius: 4, background: "transparent",
-                  border: "none", color: "#374151", cursor: "pointer",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  transition: "all 0.15s",
-                }}
-                onMouseEnter={e => { e.currentTarget.style.background = "rgba(220,38,38,0.1)"; e.currentTarget.style.color = "#ef4444"; }}
-                onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#374151"; }}
-              >
-                <X size={10} />
-              </button>
-            </div>
-          </div>
-
-          {/* ── Contenu de l'onglet ── */}
-          <div style={{ flex: 1, overflow: "hidden" }}>
-            {activeTab === "dashboard" && (
-              <DashboardTab
-                stats={stats} history={history} gpuHistory={gpuHistory}
-                perfScore={perfScore} activeCount={activeCount}
-                optimizing={optimizing} handleBigBoost={handleBigBoost}
-                username={user.username} setActiveTab={setActiveTab}
-              />
-            )}
-            {activeTab === "performance" && (
-              <PerformanceTab
-                tweakStates={tweakStates} tweakLoading={tweakLoading}
-                activeCount={activeCount} handleToggleTweak={handleToggleTweak}
-                setTweakStates={setTweakStates}
-              />
-            )}
-            {activeTab === "network"    && <NetworkTab ping={ping} pingHistory={pingHistory} />}
-            {activeTab === "processes" && <ProcessTab />}
-            {activeTab === "cleanup"   && <CleanupTab />}
-            {activeTab === "games"    && <GamesTab userId={user.id} />}
-            {activeTab === "system"   && (
-              <SystemTab
-                user={user} activeCount={activeCount} perfScore={perfScore}
-                stats={stats} info={info} onLogout={onLogout}
-                onPlanActivated={onPlanActivated}
-              />
-            )}
-          </div>
+        {/* ══ Contenu ══ */}
+        <div style={{ flex: 1, overflow: "hidden" }}>
+          {activeTab === "dashboard" && (
+            <DashboardTab stats={stats} history={history} gpuHistory={gpuHistory} perfScore={perfScore} activeCount={activeCount} optimizing={optimizing} optimizedCount={optimizedCount} handleBigBoost={handleBigBoost} username={user.username} isPro={isPro} isBeta={isBeta} setActiveTab={setActiveTab} />
+          )}
+          {activeTab === "performance" && (
+            <PerformanceTab tweakStates={tweakStates} tweakLoading={tweakLoading} activeCount={activeCount} handleToggleTweak={handleToggleTweak} setTweakStates={setTweakStates} />
+          )}
+          {activeTab === "network"    && <NetworkTab ping={ping} pingHistory={pingHistory} />}
+          {activeTab === "processes"  && <ProcessTab />}
+          {activeTab === "cleanup"    && <CleanupTab />}
+          {activeTab === "games"      && <GamesTab userId={user.id} />}
+          {activeTab === "system"     && <SystemTab user={user} activeCount={activeCount} perfScore={perfScore} stats={stats} info={info} onLogout={onLogout} onPlanActivated={onPlanActivated} />}
         </div>
       </div>
 
-      {/* ── Modal mise à jour ── */}
+      {/* ══ Modal update ══ */}
       {showUpdateModal && updateVersion && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center animate-fadeIn"
-          style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(4px)" }}
-          onClick={() => { if (!installing) { setShowUpdateModal(false); } }}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              background: "#0e0e1c",
-              border: "1px solid rgba(56,189,248,0.2)",
-              borderRadius: 16,
-              padding: "28px 28px 24px",
-              width: 340,
-              boxShadow: "0 24px 64px rgba(0,0,0,0.7), 0 0 0 1px rgba(56,189,248,0.08)",
-            }}
-          >
-            {/* Header */}
-            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{
-                  width: 38, height: 38, borderRadius: 10, flexShrink: 0,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  background: "rgba(56,189,248,0.12)", border: "1px solid rgba(56,189,248,0.25)",
-                }}>
-                  <Download size={18} style={{ color: "#38bdf8" }} />
-                </div>
-                <div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: "#f1f5f9" }}>Mise à jour disponible</div>
-                  <div style={{ fontSize: 11, color: "#4b5563", marginTop: 2 }}>NexBoost v{updateVersion}</div>
-                </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center animate-fadeIn" style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(6px)" }} onClick={() => { if (!installing) setShowUpdateModal(false); }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "#0d0d1f", border: "1px solid rgba(99,102,241,0.25)", borderRadius: 16, padding: "28px", width: 340, boxShadow: "0 24px 64px rgba(0,0,0,0.8)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+              <div style={{ width: 38, height: 38, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(59,130,246,0.12)", border: "1px solid rgba(59,130,246,0.25)" }}>
+                <Download size={18} style={{ color: "#60a5fa" }} />
               </div>
-              {!installing && (
-                <button
-                  onClick={() => setShowUpdateModal(false)}
-                  style={{ background: "none", border: "none", color: "#4b5563", cursor: "pointer", padding: 4, display: "flex", borderRadius: 6 }}
-                  onMouseEnter={e => { e.currentTarget.style.color = "#94a3b8"; }}
-                  onMouseLeave={e => { e.currentTarget.style.color = "#4b5563"; }}
-                >
-                  <X size={14} />
-                </button>
-              )}
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#e2e8f0" }}>Mise à jour disponible</div>
+                <div style={{ fontSize: 11, color: "#374151" }}>PCPulse v{updateVersion}</div>
+              </div>
+              {!installing && <button onClick={() => setShowUpdateModal(false)} style={{ marginLeft: "auto", background: "none", border: "none", color: "#374151", cursor: "pointer", padding: 4, display: "flex", borderRadius: 6 }} onMouseEnter={e => { e.currentTarget.style.color = "#94a3b8"; }} onMouseLeave={e => { e.currentTarget.style.color = "#374151"; }}><X size={14} /></button>}
             </div>
-
-            {/* Description */}
-            <p style={{ fontSize: 12, color: "#64748b", lineHeight: 1.6, marginBottom: 16 }}>
-              Une nouvelle version est prête à être installée. L'application se relancera automatiquement une fois la mise à jour terminée.
-            </p>
-
-            {/* Erreur */}
-            {updateError && (
-              <div style={{
-                display: "flex", alignItems: "center", gap: 8, padding: "10px 12px",
-                borderRadius: 8, marginBottom: 14,
-                background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.2)",
-              }}>
-                <AlertTriangle size={13} style={{ color: "#f87171", flexShrink: 0 }} />
-                <span style={{ fontSize: 11, color: "#f87171" }}>{updateError}</span>
-              </div>
-            )}
-
-            {/* Barre de progression (pendant install) */}
-            {installing && (
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                  <span style={{ fontSize: 11, color: "#38bdf8" }}>Téléchargement en cours...</span>
-                </div>
-                <div style={{ height: 4, background: "rgba(255,255,255,0.06)", borderRadius: 4, overflow: "hidden" }}>
-                  <div style={{
-                    height: "100%", borderRadius: 4,
-                    background: "linear-gradient(90deg, #38bdf8, #818cf8)",
-                    animation: "progress-indeterminate 1.5s ease-in-out infinite",
-                    width: "40%",
-                  }} />
-                </div>
-              </div>
-            )}
-
-            {/* Boutons */}
+            <p style={{ fontSize: 12, color: "#4b5563", lineHeight: 1.6, marginBottom: 16 }}>L'application se relancera automatiquement après l'installation.</p>
+            {updateError && <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderRadius: 8, marginBottom: 14, background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.2)" }}><AlertTriangle size={13} style={{ color: "#f87171" }} /><span style={{ fontSize: 11, color: "#f87171" }}>{updateError}</span></div>}
+            {installing && <div style={{ marginBottom: 16 }}><div style={{ height: 4, background: "rgba(255,255,255,0.06)", borderRadius: 4, overflow: "hidden" }}><div style={{ height: "100%", background: "linear-gradient(90deg,#3b82f6,#6366f1)", animation: "progress-indeterminate 1.5s ease-in-out infinite", width: "40%" }} /></div></div>}
             <div style={{ display: "flex", gap: 8 }}>
-              {!installing && !updateError && (
-                <button
-                  onClick={() => setShowUpdateModal(false)}
-                  style={{
-                    flex: 1, padding: "9px 0", borderRadius: 8, fontSize: 12, fontWeight: 600,
-                    background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
-                    color: "#64748b", cursor: "pointer", transition: "all 0.15s",
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.color = "#94a3b8"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.15)"; }}
-                  onMouseLeave={e => { e.currentTarget.style.color = "#64748b"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; }}
-                >
-                  Plus tard
-                </button>
-              )}
-              <button
-                onClick={updateError ? () => { setUpdateError(null); handleInstallUpdate(); } : handleInstallUpdate}
-                disabled={installing}
-                style={{
-                  flex: 2, padding: "9px 0", borderRadius: 8, fontSize: 12, fontWeight: 700,
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                  background: "rgba(56,189,248,0.12)", border: "1px solid rgba(56,189,248,0.35)",
-                  color: "#38bdf8", cursor: installing ? "not-allowed" : "pointer",
-                  opacity: installing ? 0.8 : 1, transition: "all 0.15s",
-                }}
-                onMouseEnter={e => { if (!installing) e.currentTarget.style.background = "rgba(56,189,248,0.22)"; }}
-                onMouseLeave={e => { e.currentTarget.style.background = "rgba(56,189,248,0.12)"; }}
-              >
-                {installing ? (
-                  <>
-                    <div className="animate-spin" style={{ width: 12, height: 12, borderRadius: "50%", border: "2px solid rgba(56,189,248,0.2)", borderTopColor: "#38bdf8" }} />
-                    Installation...
-                  </>
-                ) : (
-                  <><Download size={13} /> {updateError ? "Réessayer" : "Installer maintenant"}</>
-                )}
+              {!installing && !updateError && <button onClick={() => setShowUpdateModal(false)} style={{ flex: 1, padding: "9px 0", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#4b5563", cursor: "pointer" }}>Plus tard</button>}
+              <button onClick={updateError ? () => { setUpdateError(null); handleInstallUpdate(); } : handleInstallUpdate} disabled={installing} style={{ flex: 2, padding: "9px 0", borderRadius: 8, fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: "rgba(59,130,246,0.12)", border: "1px solid rgba(59,130,246,0.3)", color: "#60a5fa", cursor: installing ? "not-allowed" : "pointer", opacity: installing ? 0.8 : 1 }}>
+                {installing ? <><div className="animate-spin" style={{ width: 12, height: 12, borderRadius: "50%", border: "2px solid rgba(59,130,246,0.2)", borderTopColor: "#3b82f6" }} />Installation...</> : <><Download size={13} />{updateError ? "Réessayer" : "Installer"}</>}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── Toasts ── */}
+      {/* ══ Toasts ══ */}
       {toasts.length > 0 && (
         <div className="fixed bottom-5 right-5 flex flex-col gap-2 z-50 pointer-events-none">
           {toasts.map(t => (
-            <div
-              key={t.id}
-              className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-xs font-medium animate-fadeIn"
-              style={{
-                background: t.ok ? "rgba(34,197,94,0.1)" : "rgba(248,113,113,0.1)",
-                border: `1px solid ${t.ok ? "rgba(34,197,94,0.3)" : "rgba(248,113,113,0.3)"}`,
-                color: t.ok ? "#4ade80" : "#f87171",
-                boxShadow: "0 4px 16px rgba(0,0,0,0.5)",
-                maxWidth: 300,
-              }}
-            >
-              {t.ok
-                ? <CheckCircle size={12} style={{ flexShrink: 0 }} />
-                : <AlertTriangle size={12} style={{ flexShrink: 0 }} />}
+            <div key={t.id} className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-xs font-medium animate-fadeIn" style={{ background: t.ok ? "rgba(34,197,94,0.1)" : "rgba(248,113,113,0.1)", border: `1px solid ${t.ok ? "rgba(34,197,94,0.3)" : "rgba(248,113,113,0.3)"}`, color: t.ok ? "#4ade80" : "#f87171", boxShadow: "0 4px 16px rgba(0,0,0,0.5)", maxWidth: 300 }}>
+              {t.ok ? <CheckCircle size={12} style={{ flexShrink: 0 }} /> : <AlertTriangle size={12} style={{ flexShrink: 0 }} />}
               {t.msg}
             </div>
           ))}
         </div>
       )}
 
-      {/* ── Boost en cours ── */}
+      {/* ══ Boost overlay ══ */}
       {optimizing && (
-        <div
-          className="fixed bottom-5 left-1/2 -translate-x-1/2 flex items-center gap-3 px-5 py-3 rounded-xl z-50 animate-fadeIn"
-          style={{
-            background: "#0e0e18",
-            border: "1px solid rgba(56,189,248,0.25)",
-            boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
-          }}
-        >
-          <div
-            className="w-4 h-4 rounded-full border-2 animate-spin"
-            style={{ borderColor: "rgba(56,189,248,0.2)", borderTopColor: "#38bdf8" }}
-          />
-          <span className="text-sm font-medium" style={{ color: "#f1f5f9" }}>
-            Boost en cours... {optimizedCount}/{TWEAKS.length}
-          </span>
-          <Zap size={14} style={{ color: "#38bdf8" }} />
+        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 flex items-center gap-3 px-5 py-3 rounded-xl z-50 animate-fadeIn" style={{ background: "#0d0d1f", border: "1px solid rgba(59,130,246,0.25)", boxShadow: "0 8px 32px rgba(0,0,0,0.5)" }}>
+          <div className="w-4 h-4 rounded-full border-2 animate-spin" style={{ borderColor: "rgba(59,130,246,0.2)", borderTopColor: "#3b82f6" }} />
+          <span className="text-sm font-medium" style={{ color: "#e2e8f0" }}>Boost en cours... {optimizedCount}/{TWEAKS.length}</span>
+          <Zap size={14} style={{ color: "#3b82f6" }} />
         </div>
       )}
     </div>

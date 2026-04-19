@@ -36,7 +36,7 @@ export default function PlanGate({ isPro, feature, children }: Props) {
           <Lock size={17} style={{ color: "#a78bfa" }} />
         </div>
 
-        <div style={{ fontSize: 13, fontWeight: 700, color: "#f1f5f9" }}>{feature}</div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#f8fafc" }}>{feature}</div>
 
         <span style={{
           fontSize: 9, fontWeight: 800, letterSpacing: "0.14em",
@@ -48,7 +48,7 @@ export default function PlanGate({ isPro, feature, children }: Props) {
           PLAN PRO
         </span>
 
-        <p style={{ fontSize: 11, color: "#4b5563", margin: 0, marginTop: 2 }}>
+        <p style={{ fontSize: 11, color: "#475569", margin: 0, marginTop: 2 }}>
           Disponible dans Système → Paramètres
         </p>
       </div>

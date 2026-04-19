@@ -5,6 +5,7 @@ import Home         from "./pages/Home";
 import Login        from "./pages/Login";
 import Register     from "./pages/Register";
 import Dashboard    from "./pages/Dashboard";
+import Onboarding   from "./pages/Onboarding";
 import type { Plan, BillingCycle } from "./lib/db";
 
 export interface UserData {
@@ -23,11 +24,12 @@ export interface PlanActivationData {
 }
 
 function App() {
-  const [splashDone, setSplashDone] = useState(false);
-  const [user,       setUser]       = useState<UserData | null>(null);
+  const [splashDone,  setSplashDone]  = useState(false);
+  const [onboarded,   setOnboarded]   = useState(() => localStorage.getItem("pcpulse_onboarded") === "true");
+  const [user,        setUser]        = useState<UserData | null>(null);
 
   useEffect(() => {
-    const stored = localStorage.getItem("nexboost_user");
+    const stored = localStorage.getItem("pcpulse_user");
     if (!stored) return;
     try {
       const parsed = JSON.parse(stored);
@@ -37,7 +39,7 @@ function App() {
         parsed.planExpiresAt = null;
         parsed.billingCycle  = null;
         delete parsed.premium;
-        localStorage.setItem("nexboost_user", JSON.stringify(parsed));
+        localStorage.setItem("pcpulse_user", JSON.stringify(parsed));
       }
       setUser(parsed as UserData);
     } catch {}
@@ -45,19 +47,19 @@ function App() {
 
   const handleLogin = (userData: UserData) => {
     setUser(userData);
-    localStorage.setItem("nexboost_user", JSON.stringify(userData));
+    localStorage.setItem("pcpulse_user", JSON.stringify(userData));
   };
 
   const handleLogout = () => {
     setUser(null);
-    localStorage.removeItem("nexboost_user");
+    localStorage.removeItem("pcpulse_user");
   };
 
   const handlePlanActivated = (planData: PlanActivationData) => {
     if (!user) return;
     const updated: UserData = { ...user, ...planData };
     setUser(updated);
-    localStorage.setItem("nexboost_user", JSON.stringify(updated));
+    localStorage.setItem("pcpulse_user", JSON.stringify(updated));
   };
 
   if (!splashDone) {
@@ -68,8 +70,16 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route
+          path="/onboarding"
+          element={<Onboarding onDone={() => setOnboarded(true)} />}
+        />
+        <Route
           path="/"
-          element={user ? <Navigate to="/dashboard" replace /> : <Home />}
+          element={
+            !onboarded
+              ? <Navigate to="/onboarding" replace />
+              : user ? <Navigate to="/dashboard" replace /> : <Home />
+          }
         />
         <Route
           path="/login"
